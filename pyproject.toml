@@ -1,0 +1,30 @@
+[project]
+name = "octo-pytorch"
+version = "0.1.0"
+description = "Octo VLA in PyTorch."
+authors = [{ name = "Khalil Meftah", email = "kmeftah.khalil@gmail.com" }]
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "torch",
+    "numpy",
+    "einops",
+    "transformers",
+]
+
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff", # Linter and formatter
+]
+jax = [
+    "jax",
+]
+
+[tool.ruff]
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
