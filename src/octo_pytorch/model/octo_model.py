@@ -634,17 +634,42 @@ class FourierFeatures(nn.Module):
 
 
 class MLPResNetBlock(nn.Module):
-    """MLP ResNet block for diffusion network"""
-
-    def __init__(self, hidden_dim: int):
+    """Implementation of MLPResNetBlock."""
+    
+    def __init__(self, features: int, activation, dropout_rate: Optional[float] = None, use_layer_norm: bool = False):
         super().__init__()
-        self.norm = nn.LayerNorm(hidden_dim)
-        self.mlp = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim * 4), nn.SiLU(), nn.Linear(hidden_dim * 4, hidden_dim)
-        )
-
+        self.features = features
+        self.activation = activation
+        self.dropout_rate = dropout_rate
+        self.use_layer_norm = use_layer_norm
+        
+        if dropout_rate is not None and dropout_rate > 0:
+            self.dropout = nn.Dropout(dropout_rate)
+        if use_layer_norm:
+            self.layer_norm = nn.LayerNorm(features)
+        
+        self.dense1 = nn.Linear(features, features * 4)
+        self.dense2 = nn.Linear(features * 4, features)
+    
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x + self.mlp(self.norm(x))
+        """Forward pass."""
+        residual = x
+        
+        if self.dropout_rate is not None and self.dropout_rate > 0:
+            x = self.dropout(x)
+        if self.use_layer_norm:
+            x = self.layer_norm(x)
+        
+        x = self.dense1(x)
+        x = self.activation(x)
+        x = self.dense2(x)
+        
+        # # Residual connection with projection if needed
+        # if residual.shape != x.shape:
+        #     residual_proj = nn.Linear(residual.shape[-1], self.features, device=x.device, dtype=x.dtype)
+        #     residual = residual_proj(residual)
+        
+        return residual + x
 
 
 class DiffusionActionHead(nn.Module):
