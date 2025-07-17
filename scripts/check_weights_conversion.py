@@ -3,6 +3,7 @@ import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import argparse
+import random
 
 import jax
 import numpy as np
@@ -21,6 +22,14 @@ def main():
         help="Model name to use (e.g., 'octo-base', 'octo-small')",
     )
     args = parser.parse_args()
+
+    # for reproducibility
+    seed = 0
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    print(f"Set random seed to {seed}")
 
     model_name = args.model_name
     if model_name == "octo-base":
@@ -91,6 +100,12 @@ def main():
     torch_action = torch_action * std + mean
 
     print("Finished inference.")
+
+    # Compare the outputs
+    print("Jax action:", jax_action)
+    print("PyTorch action:", torch_action.squeeze().detach().numpy())
+    np.testing.assert_allclose(jax_action.squeeze(), torch_action.squeeze().detach().numpy(), rtol=1e-2)
+    print("Outputs are the same!")
 
 
 if __name__ == "__main__":
