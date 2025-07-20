@@ -128,6 +128,11 @@ class OctoModel(nn.Module):
         # Initialize tokenizers based on config
         self._init_tokenizers()
 
+        # tmp
+        self.prefix_groups = None
+        self.timestep_groups = None
+        self.transformer_outputs = None
+
     def _init_tokenizers(self):
         """Initialize observation and task tokenizers"""
         # Primary image tokenizer (256x256)
@@ -283,6 +288,10 @@ class OctoModel(nn.Module):
         actions = self.action_head.predict_action(
             transformer_outputs=transformer_outputs, embodiment_action_dim=embodiment_action_dim
         )
+
+        self.prefix_groups = prefix_groups
+        self.timestep_groups = timestep_groups
+        self.transformer_outputs = transformer_outputs
 
         return actions
 
