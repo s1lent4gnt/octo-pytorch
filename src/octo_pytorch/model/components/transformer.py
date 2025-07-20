@@ -263,37 +263,8 @@ class Transformer(nn.Module):
         # Final layer norm
         self.encoder_norm = nn.LayerNorm(d_model)
 
-        # # Initialize position embedding if needed
-        # if add_position_embedding:
-        #     # Default size of 100 for position embedding, will be resized if needed
-        #     self.pos_embedding = nn.Parameter(
-        #         torch.normal(0, 0.02, size=(1, 100, d_model))
-        #     )
-        #     self.pos_dropout = nn.Dropout(dropout_rate)
-        # else:
-        #     self.pos_embedding = None
-        #     self.pos_dropout = None
-
     def forward(self, x: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         assert x.dim() == 3, f"Expected (batch, len, emb) got {x.shape}"
-
-        # batch_size, seq_len, d_model = x.shape
-
-        # if self.add_position_embedding:
-        #     # Resize position embedding if needed
-        #     if seq_len > self.pos_embedding.shape[1]:
-        #         # Create a new position embedding with the right size
-        #         new_pos_embedding = nn.Parameter(
-        #             torch.normal(0, 0.02, size=(1, seq_len, d_model))
-        #         )
-        #         # Copy the existing values
-        #         new_pos_embedding.data[:, :self.pos_embedding.shape[1], :] = self.pos_embedding.data
-        #         self.pos_embedding = new_pos_embedding
-
-        #     # Use only the needed part of position embedding
-        #     pos_emb = self.pos_embedding[:, :seq_len, :]
-        #     x = x + pos_emb
-        #     x = self.pos_dropout(x) if train else x
 
         # Apply encoder blocks
         for encoder_block in self.encoder_blocks:
