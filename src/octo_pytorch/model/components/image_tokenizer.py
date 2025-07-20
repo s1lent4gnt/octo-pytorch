@@ -108,17 +108,14 @@ class WeightStandardizedConv2d(nn.Conv2d):
     """Convolution with weight standardization."""
 
     def forward(self, x):
-        # Get weight
         weight = self.weight
 
-        # Standardize weight
         weight_mean = weight.mean(dim=(1, 2, 3), keepdim=True)
-        weight = weight - weight_mean
-        weight_std = weight.std(dim=(1, 2, 3), keepdim=True) + 1e-5
-        weight = weight / weight_std
+        # NOTE: the use of unbiased estimator
+        weight_std = weight.std(dim=(1, 2, 3), keepdim=True, unbiased=False) + 1e-5
+        standardized_weight = (weight - weight_mean) / weight_std
 
-        # Use standardized weight for convolution
-        return F.conv2d(x, weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+        return F.conv2d(x, standardized_weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
 
 
 class SmallStem(nn.Module):
