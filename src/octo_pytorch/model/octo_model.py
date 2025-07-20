@@ -247,6 +247,28 @@ class OctoModel(nn.Module):
                     )
                 )
 
+        # Apply repeat_task_tokens logic if enabled
+        if self.repeat_task_tokens:
+            # Get task tokens from prefix groups
+            for task_group in prefix_groups:
+                # task_group.tokens shape: (batch, n_tokens, token_embedding_size)
+                task_tokens = task_group.tokens.unsqueeze(1)  # Add timestep dimension
+                ws = timestep_groups[0].tokens.shape[1]  # Get horizon/window size
+                task_tokens = task_tokens.repeat(1, ws, 1, 1)  # Repeat for each timestep
+
+                task_pad_mask = task_group.mask.unsqueeze(1)  # Add timestep dimension
+                task_pad_mask = task_pad_mask.repeat(1, ws, 1)  # Repeat for each timestep
+
+                group_name = f"obs_{task_group.name}"
+                timestep_groups.append(
+                    TimestepGroup(
+                        tokens=task_tokens,
+                        mask=task_pad_mask,
+                        name=group_name,
+                        attention_rules=obs_attention_rules,
+                    )
+                )
+
         # Add readout tokens
         readout_tokens = torch.zeros(
             (batch_size, horizon, 1, self.token_embedding_size), device=timestep_pad_mask.device
@@ -570,30 +592,6 @@ class OctoTransformer(nn.Module):
         Returns:
             A tuple of (prefix_outputs, timestep_outputs).
         """
-        # Apply repeat_task_tokens logic if enabled
-        if self.repeat_task_tokens:
-            logging.info("repeating task tokens at each timestep to perform cross-modal attention")
-            # Get task tokens from prefix groups
-            for task_group in prefix_groups:
-                # task_group.tokens shape: (batch, n_tokens, token_embedding_size)
-                task_tokens = task_group.tokens.unsqueeze(1)  # Add timestep dimension
-                ws = timestep_groups[0].tokens.shape[1]  # Get horizon/window size
-                task_tokens = task_tokens.repeat(1, ws, 1, 1)  # Repeat for each timestep
-
-                task_pad_mask = task_group.mask.unsqueeze(1)  # Add timestep dimension
-                task_pad_mask = task_pad_mask.repeat(1, ws, 1)  # Repeat for each timestep
-
-                group_name = f"obs_{task_group.name}"
-                timestep_groups.append(
-                    TimestepGroup(
-                        tokens=task_tokens,
-                        mask=task_pad_mask,
-                        name=group_name,
-                        attention_rules=task_group.attention_rules,
-                    )
-                )
-
-        # The BlockTransformer now directly takes the groups
         prefix_outputs, timestep_outputs = self.transformer(
             prefix_groups=prefix_groups, timestep_groups=timestep_groups
         )
