@@ -283,13 +283,11 @@ class BlockTransformer(nn.Module):
     def __init__(
         self,
         transformer_kwargs: Dict[str, Any],
-        enforce_causal: bool = True,
-        use_correct_attention: bool = False,
+        enforce_causal: bool = True
     ):
         super().__init__()
         self.transformer_kwargs = transformer_kwargs
         self.enforce_causal = enforce_causal
-        self.use_correct_attention = use_correct_attention
 
         # Create transformer
         self.transformer = Transformer(**transformer_kwargs)
