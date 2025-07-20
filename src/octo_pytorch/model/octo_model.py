@@ -479,15 +479,12 @@ class LanguageTokenizer(nn.Module):
         )
 
         tokens = outputs.last_hidden_state
-
-        # The mask is the attention mask from the input
-        mask = language_input["attention_mask"].bool()
-
-        # Handle dimension expansion if needed
-        if tokens.ndim == 2:
-            tokens = tokens[:, None, :]
-            if mask.ndim == 2:
-                mask = mask[:, None, :]
+        # TODO (lilkm): check this
+        # All true attention mask, simple torch.ones
+        mask = torch.ones(tokens.shape[:2], dtype=torch.bool, device=tokens.device)
+        
+        # TODO (lilkm): this more correct
+        # mask = language_input["attention_mask"].bool()
 
         return TokenGroup(tokens, mask)
 
