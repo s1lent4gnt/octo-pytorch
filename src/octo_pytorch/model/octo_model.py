@@ -303,11 +303,12 @@ class OctoModel(nn.Module):
             )
         else:
             batch_size = len(texts)
-            # This part is tricky because self.example_batch is not available here.
-            # For now, I will assume that if goals are not provided, we are in language-conditioned mode
-            # and don't need to create dummy image goal tensors.
-            # A more robust solution might require passing example_batch during initialization.
-            pass
+            # Create dummy goals if none are provided.
+            tasks.update({"image_primary": torch.zeros((batch_size, 256, 256, 3), dtype=torch.uint8)})
+            tasks.update({"image_primary": torch.zeros((batch_size, 256, 256, 3), dtype=torch.uint8)})
+            tasks.update({"timestep": torch.zeros((batch_size), dtype=torch.int32)})
+
+            tasks["pad_mask_dict"].update({k : torch.zeros(batch_size, dtype=torch.bool) for k in tasks.keys() if k != "pad_mask_dict"})
 
         if texts is not None:
             assert self.text_processor is not None
