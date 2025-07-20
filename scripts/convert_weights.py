@@ -312,8 +312,9 @@ class OctoWeightConverter:
             k_weight = k_kernel.reshape(d_model, d_model)
             v_weight = v_kernel.reshape(d_model, d_model)
 
-            # Concatenate Q, K, V for PyTorch in_proj_weight
-            in_proj_weight = np.concatenate([q_weight, k_weight, v_weight], axis=0)
+            # Transpose weights for PyTorch format and concatenate Q, K, V
+            # PyTorch expects weights in shape (3*d_model, d_model) where weights are transposed
+            in_proj_weight = np.concatenate([q_weight.T, k_weight.T, v_weight.T], axis=0)
             pytorch_layer.attention.in_proj_weight.data = torch.from_numpy(in_proj_weight.copy()).float()
 
             # Track converted parameters
@@ -341,7 +342,7 @@ class OctoWeightConverter:
         if out_kernel is not None:
             # JAX: (num_heads, head_dim, d_model) -> PyTorch: (d_model, d_model)
             d_model = 768 if self.model_name == "octo-base" else 384
-            out_weight = out_kernel.transpose(2, 0, 1).reshape(d_model, d_model)
+            out_weight = out_kernel.reshape(d_model, d_model).T
             pytorch_layer.attention.out_proj.weight.data = torch.from_numpy(out_weight.copy()).float()
             self._track_converted_params(out_kernel, f"{attn_prefix}/out/kernel")
 
