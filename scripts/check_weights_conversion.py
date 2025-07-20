@@ -13,25 +13,27 @@ from octo.model.octo_model import OctoModel as JaxOctoModel
 from octo_pytorch.model.octo_model import OctoModel as PyTorchOctoModel
 
 
+
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--model_name",
-        type=str,
-        default="octo-base",
-        help="Model name to use (e.g., 'octo-base', 'octo-small')",
-    )
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument(
+    #     "--model_name",
+    #     type=str,
+    #     default="octo-base",
+    #     help="Model name to use (e.g., 'octo-base', 'octo-small')",
+    # )
+    # args = parser.parse_args()
 
     # for reproducibility
-    seed = 0
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    print(f"Set random seed to {seed}")
+    # seed = 0
+    # random.seed(seed)
+    # np.random.seed(seed)
+    # torch.manual_seed(seed)
+    # torch.cuda.manual_seed(seed)
+    # print(f"Set random seed to {seed}")
 
-    model_name = args.model_name
+    # model_name = args.model_name
+    model_name = "octo-small"
     if model_name == "octo-base":
         jax_model = JaxOctoModel.load_pretrained("hf://rail-berkeley/octo-base-1.5")
     elif model_name == "octo-small":
@@ -56,6 +58,23 @@ def main():
     }
     jax_task = jax_model.create_tasks(texts=jax_task_text)
 
+    # Directly call apply to get intermediate activations
+    variables = jax_model.module.apply(
+        {"params": jax_model.params},
+        jax_observation,
+        jax_task,
+        jax_observation["timestep_pad_mask"],
+        train=False,
+        method="octo_transformer",
+        mutable=["intermediates"],
+    )
+
+    # The sowed values will be in variables["intermediates"]
+    # sowed_outputs = variables["intermediates"]
+    # print("Sowed outputs (intermediate activations):")
+    # for k, v in sowed_outputs.items():
+    #     print(f"  {k}: {jax.tree_map(lambda x: x.shape, v)}")
+
     jax_action = jax_model.sample_actions(
         jax_observation,
         jax_task,
@@ -66,6 +85,10 @@ def main():
     # ##############################################
 
     torch_model = PyTorchOctoModel(model_name=model_name, repeat_task_tokens=True)
+    # task_text = ["pick up the fork"]
+    # torch_tasks = {"language_instruction": torch_model.text_processor.encode(task_text)}
+
+    # tmp_output = torch_model.task_tokenizers["language_instruction"](torch_tasks["language_instruction"])
     torch_model.load_state_dict(torch.load(f"output/pytorch_{model_name}_model.pth"))
     torch_model.eval()
     print("Model loaded successfully.")
@@ -83,14 +106,26 @@ def main():
     }
 
     torch_tasks = {"language_instruction": torch_model.text_processor.encode(task_text)}
-
     timestep_pad_mask = torch.ones(1, 1, dtype=torch.bool)
+
+    # Hooks for debugging
+    # Store outputs here
+    activations = {}
+
+    def get_hook(name):
+        def hook_fn(module, input, output):
+            activations[name] = output.detach()
+        return hook_fn
 
     with torch.no_grad():
         # Pass embodiment_action_dim=7 for bridge_dataset (7 action dimensions)
         torch_action = torch_model(
             torch_observations, torch_tasks, timestep_pad_mask, embodiment_action_dim=7
         )
+
+    # Register multiple hooks
+    # torch_model.fc1.register_forward_hook(get_hook('fc1'))
+    # torch_model.relu.register_forward_hook(get_hook('relu'))
 
     stats = np.load(f"output/dataset_statistics_{model_name}.npy", allow_pickle=True).item()
     action_stats = stats["bridge_dataset"]["action"]
@@ -104,7 +139,9 @@ def main():
     # Compare the outputs
     print("Jax action:", jax_action)
     print("PyTorch action:", torch_action.squeeze().detach().numpy())
-    np.testing.assert_allclose(jax_action.squeeze(), torch_action.squeeze().detach().numpy(), rtol=1e-2)
+    print(f"mean diff: {np.mean(np.abs(np.array(jax_action.squeeze()) - torch_action.squeeze().detach().numpy()))}")
+    print(f"max diff: {np.max(np.abs(np.array(jax_action.squeeze()) - torch_action.squeeze().detach().numpy()))}")
+    np.testing.assert_allclose(jax_action.squeeze(), torch_action.squeeze().detach().numpy(), rtol=1e-5, atol=1e-5)
     print("Outputs are the same!")
 
 
