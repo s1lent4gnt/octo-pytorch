@@ -623,11 +623,6 @@ class MLPResNetBlock(nn.Module):
         x = self.activation(x)
         x = self.dense2(x)
         
-        # # Residual connection with projection if needed
-        # if residual.shape != x.shape:
-        #     residual_proj = nn.Linear(residual.shape[-1], self.features, device=x.device, dtype=x.dtype)
-        #     residual = residual_proj(residual)
-        
         return residual + x
 
 
