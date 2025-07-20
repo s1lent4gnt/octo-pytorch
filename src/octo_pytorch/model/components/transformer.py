@@ -149,7 +149,6 @@ class MLPBlock(nn.Module):
         self.dropout2 = nn.Dropout(dropout_rate)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        """Apply Transformer MlpBlock module."""
         x = self.dense1(inputs)
         x = F.gelu(x)
         x = self.dropout1(x)
@@ -200,7 +199,6 @@ class Encoder1DBlock(nn.Module):
         self.dropout = nn.Dropout(dropout_rate)
 
     def forward(self, inputs: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """Apply Encoder1DBlock module."""
         assert inputs.dim() == 3, f"Expected (batch, seq, hidden) got {inputs.shape}"
 
         # Attention block
@@ -277,7 +275,6 @@ class Transformer(nn.Module):
         #     self.pos_dropout = None
 
     def forward(self, x: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """Apply Transformer model on the inputs."""
         assert x.dim() == 3, f"Expected (batch, len, emb) got {x.shape}"
 
         # batch_size, seq_len, d_model = x.shape
@@ -329,7 +326,6 @@ class BlockTransformer(nn.Module):
     def forward(
         self, prefix_groups: List[PrefixGroup], timestep_groups: List[TimestepGroup]
     ) -> Tuple[List[PrefixGroup], List[TimestepGroup]]:
-        """Apply BlockTransformer."""
         horizon = timestep_groups[0].tokens.shape[1]
         assert all(group.tokens.shape[1] == horizon for group in timestep_groups)
 

@@ -1,14 +1,13 @@
-import logging
 import math
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
 import torch.nn as nn
-from transformers import AutoTokenizer, T5Config, T5EncoderModel
+from transformers import AutoTokenizer, T5EncoderModel
 
 from octo_pytorch.model.components.image_tokenizer import (
-    SmallStem,
+    SmallStem16,
     generate_proper_pad_mask,
     regex_filter,
 )
@@ -46,7 +45,6 @@ class TextProcessor:
         Returns:
             Dict with 'input_ids' and 'attention_mask' tensors
         """
-        # Tokenize the strings
         return self.tokenizer(strings, **self.tokenizer_kwargs)
 
 
@@ -98,7 +96,7 @@ class OctoModel(nn.Module):
         # Language task tokens: 16 tokens with d_model dimensions
         self.task_language_pos_embedding = nn.Parameter(torch.randn(1, 16, self.token_embedding_size) * 0.02)
 
-        # Readout token embeddings - now separate from the transformer
+        # Readout token embeddings
         self.readout_embedding = nn.Parameter(
             torch.randn(1, self.max_horizon, 1, self.token_embedding_size) * 0.02
         )
@@ -133,15 +131,7 @@ class OctoModel(nn.Module):
     def _init_tokenizers(self):
         """Initialize observation and task tokenizers"""
         # Primary image tokenizer (256x256)
-        primary_encoder = SmallStem(
-            use_film=False,
-            patch_size=16,
-            kernel_sizes=(3, 3, 3, 3),
-            strides=(2, 2, 2, 2),
-            features=(32, 96, 192, 384),
-            padding=(1, 1, 1, 1),
-            num_features=512,
-        )
+        primary_encoder = SmallStem16()
 
         self.observation_tokenizers["image_primary"] = ImageTokenizer(
             encoder=primary_encoder,
@@ -152,15 +142,7 @@ class OctoModel(nn.Module):
         )
 
         # Wrist image tokenizer (128x128)
-        wrist_encoder = SmallStem(
-            use_film=False,
-            patch_size=16,
-            kernel_sizes=(3, 3, 3, 3),
-            strides=(2, 2, 2, 2),
-            features=(32, 96, 192, 384),
-            padding=(1, 1, 1, 1),
-            num_features=512,
-        )
+        wrist_encoder = SmallStem16()
 
         self.observation_tokenizers["image_wrist"] = ImageTokenizer(
             encoder=wrist_encoder,
@@ -413,9 +395,6 @@ class ImageTokenizer(nn.Module):
         # Filter observation keys using regex
         obs_stack_keys = regex_filter(self.obs_stack_keys, sorted(observations.keys()))
         if len(obs_stack_keys) == 0:
-            logging.info(
-                f"No image inputs matching {self.obs_stack_keys} were found. Skipping tokenizer entirely."
-            )
             assert self.proper_pad_mask, "Cannot skip unless using proper_pad_mask."
             return None
 
@@ -428,7 +407,6 @@ class ImageTokenizer(nn.Module):
             # If any task inputs are missing, replace with zero padding
             for k in needed_task_keys:
                 if k not in tasks:
-                    logging.info(f"No task inputs matching {k} were found. Replacing with zero padding.")
                     # Create a copy of tasks with the missing key added
                     if isinstance(tasks, dict):
                         tasks = {**tasks, k: torch.zeros_like(observations[k][:, 0])}
@@ -651,7 +629,6 @@ class MLPResNetBlock(nn.Module):
         self.dense2 = nn.Linear(features * 4, features)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass."""
         residual = x
         
         if self.dropout_rate is not None and self.dropout_rate > 0:
@@ -693,7 +670,6 @@ class DiffusionActionHead(nn.Module):
     ):
         super().__init__()
 
-        # Store all parameters to match JAX version exactly
         self.readout_key = readout_key
         self.use_map = use_map
         self.action_horizon = action_horizon
@@ -712,7 +688,6 @@ class DiffusionActionHead(nn.Module):
         if self.use_map:
             raise NotImplementedError("MAP head not implemented as use_map=False")
 
-        # Create diffusion model exactly like JAX create_diffusion_model
         # Diffusion network
         input_size = input_dim + action_dim * action_horizon + time_dim  # obs_enc + actions + cond_enc
         self.diffusion_model = ScoreActor(
@@ -725,7 +700,7 @@ class DiffusionActionHead(nn.Module):
             use_layer_norm=use_layer_norm,
         )
 
-        # Create beta schedule exactly like JAX
+        # Create beta schedule
         self.register_buffer("betas", self._cosine_beta_schedule(diffusion_steps))
         self.register_buffer("alphas", 1 - self.betas)
         self.register_buffer("alpha_hats", torch.cumprod(self.alphas, dim=0))
@@ -786,7 +761,7 @@ class DiffusionActionHead(nn.Module):
         """Convenience method for predicting actions for the final timestep."""
 
         if embodiment_action_dim is None:
-            logging.warning(
+            print(
                 "embodiment_action_dim is highly recommended for diffusion action head"
                 " if any action dimensions were masked during training"
             )
@@ -879,8 +854,6 @@ class ScoreActor(nn.Module):
         )
 
     def forward(self, obs_enc: torch.Tensor, actions: torch.Tensor, time: torch.Tensor) -> torch.Tensor:
-        """Forward pass."""
-
         # Time preprocessing
         t_ff = self.time_preprocess(time)
         cond_enc = self.cond_encoder(t_ff)
@@ -888,7 +861,6 @@ class ScoreActor(nn.Module):
         # Broadcast obs_enc if needed
         if obs_enc.shape[:-1] != cond_enc.shape[:-1]:
             new_shape = cond_enc.shape[:-1] + (obs_enc.shape[-1],)
-            logging.debug("Broadcasting obs_enc from %s to %s", obs_enc.shape, new_shape)
             obs_enc = obs_enc.expand(new_shape)
 
         # Concatenate inputs
@@ -936,8 +908,6 @@ class MLPResNet(nn.Module):
         self.output_proj = nn.Linear(hidden_dim, out_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass."""
-
         x = self.input_proj(x)
 
         for block in self.blocks:
@@ -947,8 +917,6 @@ class MLPResNet(nn.Module):
         x = self.output_proj(x)
 
         return x
-
-
 
 
 if __name__ == "__main__":

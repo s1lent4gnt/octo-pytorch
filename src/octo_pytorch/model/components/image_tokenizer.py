@@ -88,12 +88,6 @@ class FilmConditioning(nn.Module):
         self.proj_add = nn.Linear(cond_size, channels)
         self.proj_mult = nn.Linear(cond_size, channels)
 
-        # # Initialize to zeros to match JAX implementation
-        # nn.init.zeros_(self.proj_add.weight)
-        # nn.init.zeros_(self.proj_add.bias)
-        # nn.init.zeros_(self.proj_mult.weight)
-        # nn.init.zeros_(self.proj_mult.bias)
-
         projected_cond_add = self.proj_add(conditioning)
         projected_cond_mult = self.proj_mult(conditioning)
 

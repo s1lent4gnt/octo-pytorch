@@ -260,7 +260,7 @@ class OctoWeightConverter:
 
     def convert_transformer(self):
         # Access the encoder blocks through the correct path:
-        # PyTorchOctoTransformer -> BlockTransformer -> Transformer -> encoder_blocks
+        # OctoTransformer -> BlockTransformer -> Transformer -> encoder_blocks
         try:
             transformer = self.pytorch_model.transformer.transformer.transformer
             encoder_blocks = transformer.encoder_blocks
@@ -450,7 +450,6 @@ class OctoWeightConverter:
         """Count total parameters in both models"""
         print("Counting parameters...")
 
-        # I want to save the params namw and shape in a .txt file
         import json
 
         param_info = {}
@@ -461,10 +460,9 @@ class OctoWeightConverter:
         with open(f"output/jax_params_info_{self.model_name}.json", "w") as f:
             json.dump(param_info, f, indent=4)
 
-        # Debug: Print some JAX parameter names to identify T5 parameters
-        print("Sample JAX parameter names:")
+        # Print JAX parameter names to identify T5 parameters
+        print("JAX parameter names:")
         for i, (path, param) in enumerate(self.jax_params.items()):
-            # if i < 10:  # Show first 10 parameter names
             param_name = "/".join(path)
             print(f"  {param_name}: {param.shape}")
 
