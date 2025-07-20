@@ -162,7 +162,7 @@ class SmallStem(nn.Module):
                         stride=stride,
                         padding=conv_padding,
                     ),
-                    nn.GroupNorm(1, out_features),  # GroupNorm with 1 group is equivalent to LayerNorm
+                    nn.GroupNorm(32, out_features, eps=1e-06),
                     nn.ReLU(),
                 )
             )
