@@ -347,7 +347,6 @@ class ImageTokenizer(nn.Module):
     def __init__(
         self,
         encoder: nn.Module,
-        # use_token_learner: bool = False,
         num_tokens: int = 8,
         conditioning_type: str = "none",
         obs_stack_keys: Sequence[str] = ("image_.*", "depth_.*"),
@@ -357,7 +356,6 @@ class ImageTokenizer(nn.Module):
     ):
         super().__init__()
         self.encoder = encoder
-        # self.use_token_learner = use_token_learner
         self.num_tokens = num_tokens
         self.conditioning_type = conditioning_type
         self.obs_stack_keys = obs_stack_keys
@@ -365,9 +363,6 @@ class ImageTokenizer(nn.Module):
         self.task_film_keys = task_film_keys
         self.proper_pad_mask = proper_pad_mask
 
-        # # Initialize token learner if needed
-        # if use_token_learner:
-        #     self.token_learner = TokenLearner(num_tokens=num_tokens)
 
     def forward(
         self,
@@ -453,18 +448,6 @@ class ImageTokenizer(nn.Module):
             # Reshape from (b*t, h', w', c) to (b, t, h'*w', c)
             num_spatial_tokens = np.prod(spatial_dims)
             image_tokens = image_tokens.reshape(b, t, num_spatial_tokens, token_dim)
-
-        # # Apply token learner if specified
-        # if self.use_token_learner:
-        #     # Reshape for token learner: (b, t, n_tokens, c) -> (b*t, n_tokens, c)
-        #     orig_shape = image_tokens.shape
-        #     image_tokens = image_tokens.reshape(-1, *image_tokens.shape[2:])
-
-        #     # Apply token learner
-        #     image_tokens = self.token_learner(image_tokens, train=train)
-
-        #     # Reshape back: (b*t, num_tokens, c) -> (b, t, num_tokens, c)
-        #     image_tokens = image_tokens.reshape(b, t, self.num_tokens, -1)
 
         # Generate padding mask
         if self.proper_pad_mask:
