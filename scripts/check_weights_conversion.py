@@ -13,27 +13,25 @@ from octo.model.octo_model import OctoModel as JaxOctoModel
 from octo_pytorch.model.octo_model import OctoModel as PyTorchOctoModel
 
 
-
 def main():
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument(
-    #     "--model_name",
-    #     type=str,
-    #     default="octo-base",
-    #     help="Model name to use (e.g., 'octo-base', 'octo-small')",
-    # )
-    # args = parser.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default="octo-base",
+        help="Model name to use (e.g., 'octo-base', 'octo-small')",
+    )
+    args = parser.parse_args()
 
     # for reproducibility
-    # seed = 0
-    # random.seed(seed)
-    # np.random.seed(seed)
-    # torch.manual_seed(seed)
-    # torch.cuda.manual_seed(seed)
-    # print(f"Set random seed to {seed}")
+    seed = 0
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    print(f"Set random seed to {seed}")
 
-    # model_name = args.model_name
-    model_name = "octo-small"
+    model_name = args.model_name
     if model_name == "octo-base":
         jax_model = JaxOctoModel.load_pretrained("hf://rail-berkeley/octo-base-1.5")
     elif model_name == "octo-small":
@@ -69,11 +67,14 @@ def main():
         mutable=["intermediates"],
     )
 
-    # The sowed values will be in variables["intermediates"]
-    # sowed_outputs = variables["intermediates"]
-    # print("Sowed outputs (intermediate activations):")
-    # for k, v in sowed_outputs.items():
-    #     print(f"  {k}: {jax.tree_map(lambda x: x.shape, v)}")
+    # variables[1]["intermediates"]["octo_transformer"]["tasks"]
+    # variables[1]["intermediates"]["octo_transformer"]["observations"]
+    jax_prefix_groups = variables[1]["intermediates"]["octo_transformer"]["all_prefix_groups"][0][0].tokens
+    jax_timestep_groups_obs_primary = variables[1]["intermediates"]["octo_transformer"]["all_timestep_groups"][0][0].tokens # obs_primary
+    jax_timestep_groups_obs_wrist = variables[1]["intermediates"]["octo_transformer"]["all_timestep_groups"][0][1].tokens # obs_wrist
+    jax_timestep_groups_obs_task_language = variables[1]["intermediates"]["octo_transformer"]["all_timestep_groups"][0][2].tokens # obs_task_language
+    jax_timestep_groups_readout = variables[1]["intermediates"]["octo_transformer"]["all_timestep_groups"][0][3].tokens # readout_action
+    jax_transformer_outputs = variables[0]["readout_action"].tokens # readout_action output
 
     jax_action = jax_model.sample_actions(
         jax_observation,
@@ -85,10 +86,6 @@ def main():
     # ##############################################
 
     torch_model = PyTorchOctoModel(model_name=model_name, repeat_task_tokens=True)
-    # task_text = ["pick up the fork"]
-    # torch_tasks = {"language_instruction": torch_model.text_processor.encode(task_text)}
-
-    # tmp_output = torch_model.task_tokenizers["language_instruction"](torch_tasks["language_instruction"])
     torch_model.load_state_dict(torch.load(f"output/pytorch_{model_name}_model.pth"))
     torch_model.eval()
     print("Model loaded successfully.")
@@ -105,17 +102,17 @@ def main():
         "image_wrist": torch_image_wrist,
     }
 
-    torch_tasks = {"language_instruction": torch_model.text_processor.encode(task_text)}
+    torch_tasks = torch_model.create_tasks(texts=task_text)
     timestep_pad_mask = torch.ones(1, 1, dtype=torch.bool)
 
     # Hooks for debugging
     # Store outputs here
-    activations = {}
+    # activations = {}
 
-    def get_hook(name):
-        def hook_fn(module, input, output):
-            activations[name] = output.detach()
-        return hook_fn
+    # def get_hook(name):
+    #     def hook_fn(module, input, output):
+    #         activations[name] = output.detach()
+    #     return hook_fn
 
     with torch.no_grad():
         # Pass embodiment_action_dim=7 for bridge_dataset (7 action dimensions)
@@ -124,8 +121,16 @@ def main():
         )
 
     # Register multiple hooks
-    # torch_model.fc1.register_forward_hook(get_hook('fc1'))
-    # torch_model.relu.register_forward_hook(get_hook('relu'))
+    # torch_model.prefix_groups.register_forward_hook(get_hook('prefix_groups'))
+    # torch_model.timestep_groups.register_forward_hook(get_hook('timestep_groups'))
+    # torch_model.transformer_outputs.register_forward_hook(get_hook('transformer_outputs'))
+
+    torch_prefix_groups = torch_model.prefix_groups[0].tokens.detach()
+    torch_timestep_groups_obs_primary = torch_model.timestep_groups[0].tokens.detach()
+    torch_timestep_groups_obs_wrist = torch_model.timestep_groups[1].tokens.detach()
+    torch_timestep_groups_obs_task_language = torch_model.timestep_groups[2].tokens.detach()
+    torch_timestep_groups_readout = torch_model.timestep_groups[3].tokens.detach()
+    torch_transformer_outputs = torch_model.transformer_outputs["readout_action"].tokens.detach()
 
     stats = np.load(f"output/dataset_statistics_{model_name}.npy", allow_pickle=True).item()
     action_stats = stats["bridge_dataset"]["action"]
@@ -135,6 +140,32 @@ def main():
     torch_action = torch_action * std + mean
 
     print("Finished inference.")
+
+    print("Prefix groups")
+    print(f"mean diff: {np.mean(np.abs(np.array(jax_prefix_groups) - torch_prefix_groups.numpy()))}")
+    print(f"max diff: {np.max(np.abs(np.array(jax_prefix_groups) - torch_prefix_groups.numpy()))}")
+
+    print("Timestep group obs primary")
+    print(f"mean diff: {np.mean(np.abs(np.array(jax_timestep_groups_obs_primary) - torch_timestep_groups_obs_primary.numpy()))}")
+    print(f"max diff: {np.max(np.abs(np.array(jax_timestep_groups_obs_primary) - torch_timestep_groups_obs_primary.numpy()))}")
+
+    print("Timestep group obs wrist")
+    print(f"mean diff: {np.mean(np.abs(np.array(jax_timestep_groups_obs_wrist) - torch_timestep_groups_obs_wrist.numpy()))}")
+    print(f"max diff: {np.max(np.abs(np.array(jax_timestep_groups_obs_wrist) - torch_timestep_groups_obs_wrist.numpy()))}")
+
+    print("Timestep group obs task language")
+    print(f"mean diff: {np.mean(np.abs(np.array(jax_timestep_groups_obs_task_language) - torch_timestep_groups_obs_task_language.numpy()))}")
+    print(f"max diff: {np.max(np.abs(np.array(jax_timestep_groups_obs_task_language) - torch_timestep_groups_obs_task_language.numpy()))}")
+
+    print("TImestep group readout")
+    print(f"mean diff: {np.mean(np.abs(np.array(jax_timestep_groups_readout) - torch_timestep_groups_readout.numpy()))}")
+    print(f"max diff: {np.max(np.abs(np.array(jax_timestep_groups_readout) - torch_timestep_groups_readout.numpy()))}")
+
+    print("Transformer output readout")
+    print(f"mean diff: {np.mean(np.abs(np.array(jax_transformer_outputs) - torch_transformer_outputs.numpy()))}")
+    print(f"max diff: {np.max(np.abs(np.array(jax_transformer_outputs) - torch_transformer_outputs.numpy()))}")
+
+    print("=" * 50)
 
     # Compare the outputs
     print("Jax action:", jax_action)
