@@ -460,32 +460,24 @@ class LanguageTokenizer(nn.Module):
 
     def __init__(self, finetune_encoder: bool = False):
         super().__init__()
-        # Use T5-base configuration
-        self.t5_config = T5Config.from_pretrained("t5-base")
-        self.t5_encoder = T5EncoderModel(self.t5_config)
+
+        # Load pretrained weights directly
+        self.t5_encoder = T5EncoderModel.from_pretrained("t5-base")
         self.finetune_encoder = finetune_encoder
 
-        # Freeze T5 encoder if finetune_encoder is False
         if not self.finetune_encoder:
             for param in self.t5_encoder.parameters():
                 param.requires_grad = False
-            print("❄️ T5 encoder frozen (finetune_encoder=False)")
+            print("T5 encoder frozen (finetune_encoder=False)")
         else:
-            print("🔥 T5 encoder trainable (finetune_encoder=True)")
+            print("T5 encoder trainable (finetune_encoder=True)")
 
     def forward(self, language_input: Dict[str, torch.Tensor]) -> TokenGroup:
-        """
-        Args:
-            language_input: Dict with 'input_ids' and 'attention_mask'
-        Returns:
-            TokenGroup containing tokens and mask
-        """
-        # Run T5 encoder
         outputs = self.t5_encoder(
-            input_ids=language_input["input_ids"], attention_mask=language_input["attention_mask"]
+            input_ids=language_input["input_ids"],
+            attention_mask=language_input["attention_mask"]
         )
 
-        # Return T5 output directly (no projection, no positional embeddings)
         tokens = outputs.last_hidden_state
 
         # The mask is the attention mask from the input
