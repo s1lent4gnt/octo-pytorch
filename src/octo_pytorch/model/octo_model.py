@@ -426,15 +426,6 @@ class ImageTokenizer(nn.Module):
 
         # Extract non-spatial FiLM inputs
         encoder_input_kwargs = {}
-        # if self.task_film_keys and tasks is not None:
-        #     film_keys = regex_filter(self.task_film_keys, sorted(tasks.keys()))
-        #     if len(film_keys) > 0:
-        #         film_inputs = extract_inputs(film_keys, tasks)
-        #         # Repeat film inputs for each timestep
-        #         film_inputs = film_inputs.unsqueeze(1).repeat(1, t, 1)
-        #         encoder_input_kwargs.update(
-        #             {"cond_var": film_inputs.reshape(b * t, -1)}
-        #         )
 
         # Run visual encoder
         image_tokens = self.encoder(enc_inputs, **encoder_input_kwargs)
