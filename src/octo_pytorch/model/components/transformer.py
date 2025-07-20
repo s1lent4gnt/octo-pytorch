@@ -204,13 +204,23 @@ class Encoder1DBlock(nn.Module):
         # Attention block
         x = self.norm1(inputs)
 
-        # Convert boolean mask to additive mask (True -> 0, False -> -inf)
-        if attention_mask.dtype == torch.bool:
-            attention_mask = (
-                attention_mask.float()
-                .masked_fill(~attention_mask, float("-inf"))
-                .masked_fill(attention_mask, 0.0)
-            )
+        # TODO (lilkm): I need to check this
+        # Process attention mask
+        if attention_mask is not None:
+            # Attention_mask comes in as (batch, 1, seq, seq)
+            # PyTorch MultiheadAttention expects (batch * num_heads, seq, seq) or (seq, seq)
+            # We'll use the simpler (seq, seq) format by taking the first batch
+            if attention_mask.dim() == 4:
+                # Take the first batch and squeeze out the head dimension
+                attention_mask = attention_mask[0, 0]  # (seq, seq)
+            
+            # Convert boolean mask to additive mask (True -> 0, False -> -inf)
+            if attention_mask.dtype == torch.bool:
+                attention_mask = (
+                    attention_mask.float()
+                    .masked_fill(~attention_mask, float("-inf"))
+                    .masked_fill(attention_mask, 0.0)
+                )
 
         # Apply attention
         x, _ = self.attention(x, x, x, attn_mask=attention_mask, need_weights=False)
