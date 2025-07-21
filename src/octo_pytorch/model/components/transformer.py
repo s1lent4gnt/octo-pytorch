@@ -1,11 +1,12 @@
+from dataclasses import dataclass
+from enum import Enum
+from fnmatch import fnmatch
+from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from dataclasses import dataclass
-from enum import Enum
-from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
-from fnmatch import fnmatch
-import numpy as np
 
 
 class AttentionRule(Enum):
