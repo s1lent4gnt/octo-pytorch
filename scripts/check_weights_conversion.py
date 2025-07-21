@@ -70,11 +70,19 @@ def main():
     # variables[1]["intermediates"]["octo_transformer"]["tasks"]
     # variables[1]["intermediates"]["octo_transformer"]["observations"]
     jax_prefix_groups = variables[1]["intermediates"]["octo_transformer"]["all_prefix_groups"][0][0].tokens
-    jax_timestep_groups_obs_primary = variables[1]["intermediates"]["octo_transformer"]["all_timestep_groups"][0][0].tokens # obs_primary
-    jax_timestep_groups_obs_wrist = variables[1]["intermediates"]["octo_transformer"]["all_timestep_groups"][0][1].tokens # obs_wrist
-    jax_timestep_groups_obs_task_language = variables[1]["intermediates"]["octo_transformer"]["all_timestep_groups"][0][2].tokens # obs_task_language
-    jax_timestep_groups_readout = variables[1]["intermediates"]["octo_transformer"]["all_timestep_groups"][0][3].tokens # readout_action
-    jax_transformer_outputs = variables[0]["readout_action"].tokens # readout_action output
+    jax_timestep_groups_obs_primary = variables[1]["intermediates"]["octo_transformer"][
+        "all_timestep_groups"
+    ][0][0].tokens  # obs_primary
+    jax_timestep_groups_obs_wrist = variables[1]["intermediates"]["octo_transformer"]["all_timestep_groups"][
+        0
+    ][1].tokens  # obs_wrist
+    jax_timestep_groups_obs_task_language = variables[1]["intermediates"]["octo_transformer"][
+        "all_timestep_groups"
+    ][0][2].tokens  # obs_task_language
+    jax_timestep_groups_readout = variables[1]["intermediates"]["octo_transformer"]["all_timestep_groups"][0][
+        3
+    ].tokens  # readout_action
+    jax_transformer_outputs = variables[0]["readout_action"].tokens  # readout_action output
 
     jax_action = jax_model.sample_actions(
         jax_observation,
@@ -146,28 +154,52 @@ def main():
     print(f"max diff: {np.max(np.abs(np.array(jax_prefix_groups) - torch_prefix_groups.numpy()))}")
 
     print("Timestep group obs primary")
-    print(f"mean diff: {np.mean(np.abs(np.array(jax_timestep_groups_obs_primary) - torch_timestep_groups_obs_primary.numpy()))}")
-    print(f"max diff: {np.max(np.abs(np.array(jax_timestep_groups_obs_primary) - torch_timestep_groups_obs_primary.numpy()))}")
+    print(
+        f"mean diff: {np.mean(np.abs(np.array(jax_timestep_groups_obs_primary) - torch_timestep_groups_obs_primary.numpy()))}"
+    )
+    print(
+        f"max diff: {np.max(np.abs(np.array(jax_timestep_groups_obs_primary) - torch_timestep_groups_obs_primary.numpy()))}"
+    )
 
     print("Timestep group obs wrist")
-    print(f"mean diff: {np.mean(np.abs(np.array(jax_timestep_groups_obs_wrist) - torch_timestep_groups_obs_wrist.numpy()))}")
-    print(f"max diff: {np.max(np.abs(np.array(jax_timestep_groups_obs_wrist) - torch_timestep_groups_obs_wrist.numpy()))}")
+    print(
+        f"mean diff: {np.mean(np.abs(np.array(jax_timestep_groups_obs_wrist) - torch_timestep_groups_obs_wrist.numpy()))}"
+    )
+    print(
+        f"max diff: {np.max(np.abs(np.array(jax_timestep_groups_obs_wrist) - torch_timestep_groups_obs_wrist.numpy()))}"
+    )
 
     print("Timestep group obs task language")
-    print(f"mean diff: {np.mean(np.abs(np.array(jax_timestep_groups_obs_task_language) - torch_timestep_groups_obs_task_language.numpy()))}")
-    print(f"max diff: {np.max(np.abs(np.array(jax_timestep_groups_obs_task_language) - torch_timestep_groups_obs_task_language.numpy()))}")
+    print(
+        f"mean diff: {np.mean(np.abs(np.array(jax_timestep_groups_obs_task_language) - torch_timestep_groups_obs_task_language.numpy()))}"
+    )
+    print(
+        f"max diff: {np.max(np.abs(np.array(jax_timestep_groups_obs_task_language) - torch_timestep_groups_obs_task_language.numpy()))}"
+    )
 
     print("TImestep group readout")
-    print(f"mean diff: {np.mean(np.abs(np.array(jax_timestep_groups_readout) - torch_timestep_groups_readout.numpy()))}")
-    print(f"max diff: {np.max(np.abs(np.array(jax_timestep_groups_readout) - torch_timestep_groups_readout.numpy()))}")
+    print(
+        f"mean diff: {np.mean(np.abs(np.array(jax_timestep_groups_readout) - torch_timestep_groups_readout.numpy()))}"
+    )
+    print(
+        f"max diff: {np.max(np.abs(np.array(jax_timestep_groups_readout) - torch_timestep_groups_readout.numpy()))}"
+    )
 
     print("Transformer output readout")
-    print(f"mean diff: {np.mean(np.abs(np.array(jax_transformer_outputs) - torch_transformer_outputs.numpy()))}")
-    print(f"max diff: {np.max(np.abs(np.array(jax_transformer_outputs) - torch_transformer_outputs.numpy()))}")
+    print(
+        f"mean diff: {np.mean(np.abs(np.array(jax_transformer_outputs) - torch_transformer_outputs.numpy()))}"
+    )
+    print(
+        f"max diff: {np.max(np.abs(np.array(jax_transformer_outputs) - torch_transformer_outputs.numpy()))}"
+    )
 
     print("Output action")
-    print(f"mean diff: {np.mean(np.abs(np.array(jax_action.squeeze()) - torch_action.squeeze().detach().numpy()))}")
-    print(f"max diff: {np.max(np.abs(np.array(jax_action.squeeze()) - torch_action.squeeze().detach().numpy()))}")
+    print(
+        f"mean diff: {np.mean(np.abs(np.array(jax_action.squeeze()) - torch_action.squeeze().detach().numpy()))}"
+    )
+    print(
+        f"max diff: {np.max(np.abs(np.array(jax_action.squeeze()) - torch_action.squeeze().detach().numpy()))}"
+    )
 
     print("=" * 50)
     print("Jax action:", jax_action)

@@ -29,11 +29,11 @@ def find_match(pattern_dict: Dict[str, Any], name: str, default: Any) -> Any:
 @dataclass
 class TokenMetadata:
     """Attention mask logic supported by AttentionRule."""
-    
+
     name: str
     timestep: int  # -1 for prefix tokens
     attention_rules: Mapping[str, AttentionRule]
-    
+
     @classmethod
     def create(cls, group: Union["PrefixGroup", "TimestepGroup"], timestep: int):
         return cls(
@@ -41,12 +41,10 @@ class TokenMetadata:
             name=group.name,
             attention_rules=group.attention_rules,
         )
-    
+
     def should_attend_to(self, other_metadata: "TokenMetadata") -> bool:
-        attention_rule = find_match(
-            self.attention_rules, other_metadata.name, AttentionRule.NEVER
-        )
-        
+        attention_rule = find_match(self.attention_rules, other_metadata.name, AttentionRule.NEVER)
+
         if attention_rule == AttentionRule.CAUSAL:
             return other_metadata.timestep <= self.timestep
         elif attention_rule == AttentionRule.CURRENT:
@@ -213,7 +211,7 @@ class Encoder1DBlock(nn.Module):
             if attention_mask.dim() == 4:
                 # Take the first batch and squeeze out the head dimension
                 attention_mask = attention_mask[0, 0]  # (seq, seq)
-            
+
             # Convert boolean mask to additive mask (True -> 0, False -> -inf)
             if attention_mask.dtype == torch.bool:
                 attention_mask = (
@@ -290,11 +288,7 @@ class BlockTransformer(nn.Module):
     """A transformer that acts on multiple groups of tokens, which may attend to each other
     (in complex patterns)."""
 
-    def __init__(
-        self,
-        transformer_kwargs: Dict[str, Any],
-        enforce_causal: bool = True
-    ):
+    def __init__(self, transformer_kwargs: Dict[str, Any], enforce_causal: bool = True):
         super().__init__()
         self.transformer_kwargs = transformer_kwargs
         self.enforce_causal = enforce_causal
@@ -448,14 +442,16 @@ class BlockTransformer(nn.Module):
 
         # Combine with padding mask
         pad_attention_mask = self._generate_pad_attention_mask(prefix_groups, timestep_groups)
-        
+
         # The attention mask from rules is (total_tokens, total_tokens)
         # The padding mask is (batch, 1, total_tokens, total_tokens)
         # We need to combine them properly
         batch_size = pad_attention_mask.shape[0]
-        attention_mask = attention_mask.unsqueeze(0).expand(batch_size, -1, -1)  # (batch, total_tokens, total_tokens)
+        attention_mask = attention_mask.unsqueeze(0).expand(
+            batch_size, -1, -1
+        )  # (batch, total_tokens, total_tokens)
         attention_mask = attention_mask.unsqueeze(1)  # (batch, 1, total_tokens, total_tokens)
-        
+
         # Combine with padding mask using logical AND
         attention_mask = attention_mask & pad_attention_mask
 
@@ -484,13 +480,13 @@ class BlockTransformer(nn.Module):
 
         # Combine masks
         pad_mask = torch.cat([prefix_pad_mask, timestep_pad_mask], dim=1)
-        
+
         # Broadcast to attention mask shape (batch, 1, total_tokens, total_tokens)
         # This matches the JAX implementation's broadcasting
         total_tokens = pad_mask.shape[1]
         pad_mask = pad_mask.unsqueeze(1).unsqueeze(2)  # (batch, 1, 1, total_tokens)
         pad_mask = pad_mask.expand(batch_size, 1, total_tokens, total_tokens)
-        
+
         return pad_mask
 
     def _verify_causality(self, prefix_groups: List[PrefixGroup], timestep_groups: List[TimestepGroup]):

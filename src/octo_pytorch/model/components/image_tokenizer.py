@@ -109,7 +109,9 @@ class WeightStandardizedConv2d(nn.Conv2d):
         weight_std = weight.std(dim=(1, 2, 3), keepdim=True, unbiased=False) + 1e-5
         standardized_weight = (weight - weight_mean) / weight_std
 
-        return F.conv2d(x, standardized_weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+        return F.conv2d(
+            x, standardized_weight, self.bias, self.stride, self.padding, self.dilation, self.groups
+        )
 
 
 class SmallStem(nn.Module):

@@ -321,7 +321,9 @@ class OctoModel(nn.Module):
             tasks.update({"image_primary": torch.zeros((batch_size, 256, 256, 3), dtype=torch.uint8)})
             tasks.update({"timestep": torch.zeros((batch_size), dtype=torch.int32)})
 
-            tasks["pad_mask_dict"].update({k : torch.zeros(batch_size, dtype=torch.bool) for k in tasks.keys() if k != "pad_mask_dict"})
+            tasks["pad_mask_dict"].update(
+                {k: torch.zeros(batch_size, dtype=torch.bool) for k in tasks.keys() if k != "pad_mask_dict"}
+            )
 
         if texts is not None:
             assert self.text_processor is not None
@@ -371,7 +373,6 @@ class ImageTokenizer(nn.Module):
         self.task_stack_keys = task_stack_keys
         self.task_film_keys = task_film_keys
         self.proper_pad_mask = proper_pad_mask
-
 
     def forward(
         self,
@@ -483,15 +484,14 @@ class LanguageTokenizer(nn.Module):
 
     def forward(self, language_input: Dict[str, torch.Tensor]) -> TokenGroup:
         outputs = self.t5_encoder(
-            input_ids=language_input["input_ids"],
-            attention_mask=language_input["attention_mask"]
+            input_ids=language_input["input_ids"], attention_mask=language_input["attention_mask"]
         )
 
         tokens = outputs.last_hidden_state
         # TODO (lilkm): check this
         # All true attention mask, simple torch.ones
         mask = torch.ones(tokens.shape[:2], dtype=torch.bool, device=tokens.device)
-        
+
         # TODO (lilkm): this more correct
         # mask = language_input["attention_mask"].bool()
 
@@ -584,34 +584,36 @@ class FourierFeatures(nn.Module):
 
 class MLPResNetBlock(nn.Module):
     """Implementation of MLPResNetBlock."""
-    
-    def __init__(self, features: int, activation, dropout_rate: Optional[float] = None, use_layer_norm: bool = False):
+
+    def __init__(
+        self, features: int, activation, dropout_rate: Optional[float] = None, use_layer_norm: bool = False
+    ):
         super().__init__()
         self.features = features
         self.activation = activation
         self.dropout_rate = dropout_rate
         self.use_layer_norm = use_layer_norm
-        
+
         if dropout_rate is not None and dropout_rate > 0:
             self.dropout = nn.Dropout(dropout_rate)
         if use_layer_norm:
             self.layer_norm = nn.LayerNorm(features)
-        
+
         self.dense1 = nn.Linear(features, features * 4)
         self.dense2 = nn.Linear(features * 4, features)
-    
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         residual = x
-        
+
         if self.dropout_rate is not None and self.dropout_rate > 0:
             x = self.dropout(x)
         if self.use_layer_norm:
             x = self.layer_norm(x)
-        
+
         x = self.dense1(x)
         x = self.activation(x)
         x = self.dense2(x)
-        
+
         return residual + x
 
 
