@@ -21,16 +21,9 @@ cd octo_jax
 
 # Install the submodule and its specific dependencies
 uv pip install -e .
-uv pip install jax==0.4.20 flax==0.7.5
-uv pip install jaxlib==0.4.20
-uv pip install numpy==1.24.3
-uv pip install scipy==1.10.1
 
 # Return to the root directory
 cd ..
-
-# Install locked dependencies
-uv pip install --lock uv.lock
 ```
 
 ## Usage
