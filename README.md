@@ -7,6 +7,12 @@ This repository contains a PyTorch implementation of the Octo VLA model.
 To get started, follow these steps to set up the environment and install the required dependencies.
 
 ```bash
+# Clone the repo
+git clone https://github.com/s1lent4gnt/octo-pytorch.git
+
+# Add Octo JAX submodule
+git submodule update --init --recursive
+
 # Create a virtual environment using uv
 uv venv --python 3.10
 
