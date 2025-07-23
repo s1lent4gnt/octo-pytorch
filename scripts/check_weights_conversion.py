@@ -143,9 +143,13 @@ def main():
     stats = np.load(f"output/dataset_statistics_{model_name}.npy", allow_pickle=True).item()
     action_stats = stats["bridge_dataset"]["action"]
     # Ensure stats are float32 to match model's precision
+    mask = action_stats.get("mask", np.ones_like(action_stats["mean"]))
+    mask = torch.from_numpy(mask).to(torch_action.device).bool()
+    torch_action = torch_action[..., :len(mask)]
     mean = torch.from_numpy(action_stats["mean"]).to(torch_action.device).float()
     std = torch.from_numpy(action_stats["std"]).to(torch_action.device).float()
-    torch_action = torch_action * std + mean
+    torch_action = torch.where(mask, torch_action * std + mean, torch_action)
+    # torch_action = torch_action * std + mean
 
     print("Finished inference.")
 
