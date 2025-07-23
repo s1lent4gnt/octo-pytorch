@@ -179,8 +179,8 @@ class Encoder1DBlock(nn.Module):
         self.attention_dropout_rate = attention_dropout_rate
 
         # Layer normalization
-        self.norm1 = nn.LayerNorm(self.d_model, dtype=self.dtype)
-        self.norm2 = nn.LayerNorm(self.d_model, dtype=self.dtype)
+        self.norm1 = nn.LayerNorm(self.d_model, eps=1e-6, dtype=self.dtype)
+        self.norm2 = nn.LayerNorm(self.d_model, eps=1e-6, dtype=self.dtype)
 
         # MultiheadAttention
         self.attention = nn.MultiheadAttention(
@@ -270,7 +270,7 @@ class Transformer(nn.Module):
         )
 
         # Final layer norm
-        self.encoder_norm = nn.LayerNorm(d_model)
+        self.encoder_norm = nn.LayerNorm(d_model, eps=1e-6)
 
     def forward(self, x: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         assert x.dim() == 3, f"Expected (batch, len, emb) got {x.shape}"

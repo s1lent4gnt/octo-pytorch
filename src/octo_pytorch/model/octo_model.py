@@ -597,7 +597,7 @@ class MLPResNetBlock(nn.Module):
         if dropout_rate is not None and dropout_rate > 0:
             self.dropout = nn.Dropout(dropout_rate)
         if use_layer_norm:
-            self.layer_norm = nn.LayerNorm(features)
+            self.layer_norm = nn.LayerNorm(features, eps=1e-6)
 
         self.dense1 = nn.Linear(features, features * 4)
         self.dense2 = nn.Linear(features * 4, features)
