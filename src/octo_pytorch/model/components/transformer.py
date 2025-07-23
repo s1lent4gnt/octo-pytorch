@@ -149,7 +149,7 @@ class MLPBlock(nn.Module):
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         x = self.dense1(inputs)
-        x = F.gelu(x)
+        x = F.gelu(x, approximate="tanh")
         x = self.dropout1(x)
 
         output = self.dense2(x)
