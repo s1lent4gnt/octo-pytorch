@@ -760,16 +760,15 @@ class DiffusionActionHead(nn.Module):
 
         # DDPM sampling loop
         # Run reverse diffusion
-        actions_flat = noise
+        current_x = noise
         for time in reversed(range(self.diffusion_steps)):
-            # actions_flat = scan_fn(actions_flat, time)
-            input_time = torch.full((*actions_flat.shape[:-1], 1), time, device=device, dtype=torch.float32)
+            input_time = torch.full((*current_x.shape[:-1], 1), time, device=device, dtype=torch.float32)
 
-            eps_pred = self.forward(transformer_outputs, input_time, actions_flat)
+            eps_pred = self.forward(transformer_outputs, input_time, current_x)
 
             alpha_1 = 1 / torch.sqrt(self.alphas[time])
             alpha_2 = (1 - self.alphas[time]) / torch.sqrt(1 - self.alpha_hats[time])
-            current_x = alpha_1 * (actions_flat - alpha_2 * eps_pred)
+            current_x = alpha_1 * (current_x - alpha_2 * eps_pred)
 
             z = torch.zeros(current_x.shape, device=device)
             current_x = current_x + (time > 0) * (torch.sqrt(self.betas[time]) * z)
@@ -779,10 +778,10 @@ class DiffusionActionHead(nn.Module):
             # Set non-eval actions to the noise that would have been seen during training
             current_x = torch.where(flat_action_mask, current_x, torch.sqrt(1 - self.alpha_hats[time]) * z)
 
-            actions_flat = current_x
+        flat_action = current_x
 
         # Reshape and return last timestep
-        actions = actions_flat.view(
+        actions = flat_action.view(
             *sample_shape, batch_size, window_size, self.action_horizon, self.action_dim
         )
         # Only get the last timestep in the window
