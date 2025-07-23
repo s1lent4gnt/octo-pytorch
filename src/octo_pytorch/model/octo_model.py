@@ -705,18 +705,6 @@ class DiffusionActionHead(nn.Module):
         else:  # mean pooling
             embeddings = token_group.tokens.mean(dim=-2)
 
-        # Handle initialization case
-        if time is None or noisy_actions is None:
-            if not hasattr(self, "_initializing") or not self._initializing:
-                raise ValueError("Must provide time and noisy_actions when calling diffusion action head")
-            else:
-                time = torch.zeros((*embeddings.shape[:2], 1), dtype=torch.float32, device=embeddings.device)
-                noisy_actions = torch.zeros(
-                    (*embeddings.shape[:2], self.action_dim * self.action_horizon),
-                    dtype=torch.float32,
-                    device=embeddings.device,
-                )
-
         # Run diffusion model
         pred_eps = self.diffusion_model(embeddings, noisy_actions, time)
         return pred_eps
