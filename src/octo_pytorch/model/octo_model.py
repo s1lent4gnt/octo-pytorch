@@ -182,7 +182,7 @@ class OctoModel(nn.Module):
         prefix_groups = []
         for name, tokenizer in self.task_tokenizers.items():
             if name in tasks:
-                token_group = tokenizer(tasks[name])
+                token_group = tokenizer(tasks[name], tasks)
                 projected_tokens = self.task_language_projection(token_group.tokens)
 
                 # Add positional embedding
@@ -468,8 +468,9 @@ class LanguageTokenizer(nn.Module):
     """Language tokenizer that embeds text input IDs into continuous language embeddings.
     Supports pre-trained HF models."""
 
-    def __init__(self, finetune_encoder: bool = False):
+    def __init__(self, finetune_encoder: bool = False, proper_pad_mask: bool = True):
         super().__init__()
+        self.proper_pad_mask = proper_pad_mask
 
         # Load pretrained weights directly
         self.t5_encoder = T5EncoderModel.from_pretrained("t5-base")
@@ -482,20 +483,30 @@ class LanguageTokenizer(nn.Module):
         else:
             print("T5 encoder trainable (finetune_encoder=True)")
 
-    def forward(self, language_input: Dict[str, torch.Tensor]) -> TokenGroup:
+    def forward(self, language_input: Dict[str, torch.Tensor], tasks=None) -> TokenGroup:
         outputs = self.t5_encoder(
             input_ids=language_input["input_ids"], attention_mask=language_input["attention_mask"]
         )
-
         tokens = outputs.last_hidden_state
-        # TODO (lilkm): check this
-        # All true attention mask, simple torch.ones
-        mask = torch.ones(tokens.shape[:2], dtype=torch.bool, device=tokens.device)
 
-        # TODO (lilkm): this more correct
-        # mask = language_input["attention_mask"].bool()
+        # Generate padding mask
+        if self.proper_pad_mask:
+            pad_mask = generate_proper_pad_mask(
+                tokens,
+                tasks.get("pad_mask_dict", None),
+                ("language_instruction",),
+            )
+        else:
+            pad_mask = torch.ones(tokens.shape[:-1], dtype=torch.bool, device=tokens.device)
 
-        return TokenGroup(tokens, mask)
+        # # TODO (lilkm): check this
+        # # All true attention mask, simple torch.ones
+        # mask = torch.ones(tokens.shape[:2], dtype=torch.bool, device=tokens.device)
+
+        # # TODO (lilkm): this more correct
+        # # mask = language_input["attention_mask"].bool()
+
+        return TokenGroup(tokens, pad_mask)
 
 
 class OctoTransformer(nn.Module):
