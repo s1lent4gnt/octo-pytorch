@@ -203,23 +203,29 @@ class Encoder1DBlock(nn.Module):
         # Attention block
         x = self.norm1(inputs)
 
-        # TODO (lilkm): I need to check this
-        # Process attention mask
-        if attention_mask is not None:
-            # Attention_mask comes in as (batch, 1, seq, seq)
-            # PyTorch MultiheadAttention expects (batch * num_heads, seq, seq) or (seq, seq)
-            # We'll use the simpler (seq, seq) format by taking the first batch
-            if attention_mask.dim() == 4:
-                # Take the first batch and squeeze out the head dimension
-                attention_mask = attention_mask[0, 0]  # (seq, seq)
+        # # TODO (lilkm): I need to check this
+        # # Process attention mask
+        # if attention_mask is not None:
+        #     # Attention_mask comes in as (batch, 1, seq, seq)
+        #     # PyTorch MultiheadAttention expects (batch * num_heads, seq, seq) or (seq, seq)
+        #     # We'll use the simpler (seq, seq) format by taking the first batch
+        #     # if attention_mask.dim() == 4:
+        #     #     # Take the first batch and squeeze out the head dimension
+        #     #     attention_mask = attention_mask[0, 0]  # (seq, seq)
 
-            # Convert boolean mask to additive mask (True -> 0, False -> -inf)
-            if attention_mask.dtype == torch.bool:
-                attention_mask = (
-                    attention_mask.float()
-                    .masked_fill(~attention_mask, float("-inf"))
-                    .masked_fill(attention_mask, 0.0)
-                )
+        # Convert boolean mask to additive mask (True -> 0, False -> -inf)
+        if attention_mask.dtype == torch.bool:
+            attention_mask = (
+                attention_mask.float()
+                .masked_fill(~attention_mask, float("-inf"))
+                .masked_fill(attention_mask, 0.0)
+            )
+
+            # batch_size, seq_len = attention_mask.shape[0], attention_mask.shape[2]
+
+            # # attention_mask = attention_mask.unsqueeze(1)
+            # attention_mask = attention_mask.repeat(1, self.num_heads, 1, 1)
+            # attention_mask = attention_mask.view(batch_size * self.num_heads, seq_len, seq_len)
 
         # Apply attention
         x, _ = self.attention(x, x, x, attn_mask=attention_mask, need_weights=False)
@@ -445,16 +451,21 @@ class BlockTransformer(nn.Module):
         pad_attention_mask = self._generate_pad_attention_mask(prefix_groups, timestep_groups)
 
         # The attention mask from rules is (total_tokens, total_tokens)
-        # The padding mask is (batch, 1, total_tokens, total_tokens)
+        # The padding mask is (batch, total_tokens, total_tokens)
         # We need to combine them properly
         batch_size = pad_attention_mask.shape[0]
         attention_mask = attention_mask.unsqueeze(0).expand(
             batch_size, -1, -1
         )  # (batch, total_tokens, total_tokens)
-        attention_mask = attention_mask.unsqueeze(1)  # (batch, 1, total_tokens, total_tokens)
+        # attention_mask = attention_mask.unsqueeze(1)  # (batch, 1, total_tokens, total_tokens)
 
         # Combine with padding mask using logical AND
         attention_mask = attention_mask & pad_attention_mask
+
+        num_attention_heads = self.transformer_kwargs["num_attention_heads"]
+
+        attention_mask = attention_mask.unsqueeze(1).expand(batch_size, self.transformer_kwargs["num_attention_heads"], total_tokens, total_tokens)
+        attention_mask = attention_mask.view(batch_size * num_attention_heads, total_tokens, total_tokens)
 
         return attention_mask
 
@@ -485,8 +496,8 @@ class BlockTransformer(nn.Module):
         # Broadcast to attention mask shape (batch, 1, total_tokens, total_tokens)
         # This matches the JAX implementation's broadcasting
         total_tokens = pad_mask.shape[1]
-        pad_mask = pad_mask.unsqueeze(1).unsqueeze(2)  # (batch, 1, 1, total_tokens)
-        pad_mask = pad_mask.expand(batch_size, 1, total_tokens, total_tokens)
+        pad_mask = pad_mask.unsqueeze(1) # (batch, 1, total_tokens)
+        pad_mask = pad_mask.expand(batch_size, total_tokens, total_tokens)
 
         return pad_mask
 
