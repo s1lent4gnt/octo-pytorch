@@ -19,6 +19,8 @@ from octo_pytorch.model.components.transformer import (
     TokenGroup,
 )
 
+from einops import rearrange
+
 
 class TextProcessor:
     """HFTokenizer."""
@@ -581,7 +583,7 @@ class FourierFeatures(nn.Module):
         """
         if self.learnable:
             # f = 2 * π * x @ w.T
-            f = 2 * math.pi * torch.matmul(x, self.kernel.T)
+            f = 2 * math.pi * torch.matmul(x.to(self.kernel.dtype), self.kernel.T)
         else:
             # Non-learnable version (not used in Octo but included for completeness)
             half_dim = self.output_size // 2
@@ -628,6 +630,23 @@ class MLPResNetBlock(nn.Module):
         return residual + x
 
 
+def masked_mean(x, mask):
+    mask = torch.broadcast_to(mask, x.shape)
+    return torch.mean(x * mask) / torch.clamp(torch.mean(mask.to(x.dtype)), min=1e-5, max=None)
+
+def continous_loss(pred_value, ground_truth_value, mask, loss_type="mse"):
+    if loss_type == "mse":
+        loss = torch.square(pred_value - ground_truth_value)
+    elif loss_type == "l1":
+        loss = torch.abs(pred_value - ground_truth_value)
+    else:
+        raise ValueError(f"Invalid loss type: {loss_type}")
+
+    loss = masked_mean(loss, mask)
+
+    mse = torch.square(pred_value - ground_truth_value)
+    mse = masked_mean(mse, mask)
+    return loss, {"loss": loss, "mse": mse}
 class DiffusionActionHead(nn.Module):
     """Implementation of diffusion action head."""
 
@@ -719,6 +738,36 @@ class DiffusionActionHead(nn.Module):
         # Run diffusion model
         pred_eps = self.diffusion_model(embeddings, noisy_actions, time)
         return pred_eps
+
+    def loss(self, transformer_outputs, actions, timestep_pad_mask, action_pad_mask):
+        """Compute the loss for the diffusion objective."""
+        batch_size, window_size = timestep_pad_mask.shape
+        device = actions.device
+        actions_flat = rearrange(actions, "b w h a -> b w (h a)")
+        actions_flat = torch.clamp(actions_flat, -self.max_action, self.max_action)
+
+        time = torch.randint(
+            0, self.diffusion_steps, (self.n_diffusion_samples, batch_size, window_size, 1), device=device
+        )
+        noise = torch.randn((self.n_diffusion_samples,) + actions_flat.shape, device=device)
+
+        alpha_hats = self.alpha_hats.to(device=device)
+
+        scale = torch.sqrt(alpha_hats[time])
+        std = torch.sqrt(1 - alpha_hats[time])
+        noisy_actions = scale * actions_flat[None] + std * noise
+        pred_eps = self.forward(transformer_outputs, time=time, noisy_actions=noisy_actions)
+
+        mask = timestep_pad_mask[:, :, None, None] & action_pad_mask
+        mask = rearrange(mask, "b w h a -> b w (h a)")
+        mask = mask[None]
+
+        loss, metrics = continous_loss(pred_eps, noise, mask, loss_type=self.loss_type)
+
+        loss = loss * self.action_dim
+        metrics["loss"] = metrics["loss"] * self.action_dim
+        metrics["mse"] = metrics["mse"] * self.action_dim
+        return loss, metrics
 
     def predict_action(
         self,
