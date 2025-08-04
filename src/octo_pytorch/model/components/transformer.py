@@ -465,7 +465,7 @@ class BlockTransformer(nn.Module):
         num_attention_heads = self.transformer_kwargs["num_attention_heads"]
 
         attention_mask = attention_mask.unsqueeze(1).expand(batch_size, self.transformer_kwargs["num_attention_heads"], total_tokens, total_tokens)
-        attention_mask = attention_mask.view(batch_size * num_attention_heads, total_tokens, total_tokens)
+        attention_mask = attention_mask.reshape(batch_size * num_attention_heads, total_tokens, total_tokens)
 
         return attention_mask
 
