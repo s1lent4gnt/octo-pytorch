@@ -98,3 +98,6 @@ dmypy.json
 
 # Rope project settings
 .ropeproject
+
+# MuJoCo output logs
+MUJOCO_LOG.TXT
