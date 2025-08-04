@@ -168,8 +168,22 @@ class OctoModel(nn.Module):
         tasks: Dict[str, torch.Tensor],
         timestep_pad_mask: torch.Tensor,
         embodiment_action_dim: Optional[int] = None,
+        training: bool = False,
     ) -> torch.Tensor:
-        """Forward pass through the model."""
+        """Forward pass through the model.
+        
+        Args:
+            observations: Dict of observation tensors
+            tasks: Dict of task tensors
+            timestep_pad_mask: Boolean mask for timesteps
+            embodiment_action_dim: Optional action dimension for embodiment
+            training: If True, returns transformer outputs for loss computation.
+                     If False, returns predicted actions via diffusion sampling.
+        
+        Returns:
+            If training=True: Dict of transformer outputs
+            If training=False: Predicted actions tensor
+        """
 
         batch_size, horizon = timestep_pad_mask.shape
 
@@ -286,16 +300,17 @@ class OctoModel(nn.Module):
         for group in timestep_outputs:
             transformer_outputs[group.name] = group
 
-        # Generate actions using the corrected interface
-        actions = self.action_head.predict_action(
-            transformer_outputs=transformer_outputs, embodiment_action_dim=embodiment_action_dim
-        )
-
         self.prefix_groups = prefix_groups
         self.timestep_groups = timestep_groups
         self.transformer_outputs = transformer_outputs
 
-        return actions
+        if training:
+            return transformer_outputs
+        else:
+            actions = self.action_head.predict_action(
+                transformer_outputs=transformer_outputs, embodiment_action_dim=embodiment_action_dim
+            )
+            return actions
 
     def create_tasks(
         self, goals: Optional[Dict[str, torch.Tensor]] = None, texts: Optional[Sequence[str]] = None
