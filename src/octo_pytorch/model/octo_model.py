@@ -816,7 +816,7 @@ class DiffusionActionHead(nn.Module):
         )
 
         # Initialize with noise
-        noise = torch.zeros(
+        noise = torch.randn(
             (*sample_shape, batch_size, window_size, self.action_horizon * self.action_dim),
             device=device,
         )
@@ -833,7 +833,7 @@ class DiffusionActionHead(nn.Module):
             alpha_2 = (1 - self.alphas[time]) / torch.sqrt(1 - self.alpha_hats[time])
             current_x = alpha_1 * (current_x - alpha_2 * eps_pred)
 
-            z = torch.zeros(current_x.shape, device=device)
+            z = torch.randn(current_x.shape, device=device)
             current_x = current_x + (time > 0) * (torch.sqrt(self.betas[time]) * z)
 
             current_x = torch.clamp(current_x, -self.max_action, self.max_action)
