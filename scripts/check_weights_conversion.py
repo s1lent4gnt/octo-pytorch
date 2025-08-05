@@ -23,13 +23,13 @@ def main():
     )
     args = parser.parse_args()
 
-    # for reproducibility
-    seed = 0
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    print(f"Set random seed to {seed}")
+    # # for reproducibility
+    # seed = 0
+    # random.seed(seed)
+    # np.random.seed(seed)
+    # torch.manual_seed(seed)
+    # torch.cuda.manual_seed(seed)
+    # print(f"Set random seed to {seed}")
 
     model_name = args.model_name
     if model_name == "octo-base":
