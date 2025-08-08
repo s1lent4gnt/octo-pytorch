@@ -150,7 +150,7 @@ def transform_observation_for_eval(obs, model, device):
     return observations, timestep_pad_mask
 
 
-def evaluate_policy(model, env, num_episodes=3, episode_time_limit_s=15):
+def evaluate_policy(model, env, num_episodes=3, episode_time_limit_s=30):
     model.eval()
     total_rewards = 0
     device = next(model.parameters()).device
@@ -184,7 +184,7 @@ def evaluate_policy(model, env, num_episodes=3, episode_time_limit_s=15):
                 break
 
             dt_time = time.perf_counter() - start_time
-            t = 1 / 10 - dt_time
+            t = 1 / 5 - dt_time
             if t > 0:
                 time.sleep(t)
 
@@ -197,7 +197,7 @@ def evaluate_policy(model, env, num_episodes=3, episode_time_limit_s=15):
 
 
 def main():
-    nb_epochs = 3 # int(1e5)
+    nb_epochs = 5000 # int(1e5)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     repo_id = "lilkm/panda_pick_octo_resized"
     model_name = "octo-small"
@@ -213,7 +213,7 @@ def main():
 
     # WandB configuration
     use_wandb = True
-    wandb_project = "octo-finetune"
+    wandb_project = "octo-finetune-pt"
     wandb_name = f"finetune_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     wandb_config = {
         "model_name": model_name,
@@ -238,6 +238,7 @@ def main():
     model = OctoModel(model_name=model_name, repeat_task_tokens=True)
 
     checkpoint_path = f"output/pytorch_{model_name}_model.pth"
+    # checkpoint_path = "output/models/octo-small_final.pth"
     print(f"Loading checkpoint from: {checkpoint_path}")
     model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
 
