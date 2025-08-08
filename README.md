@@ -88,3 +88,14 @@ PyTorch action: [[-1.0992435e-03 -1.9059055e-04 -1.5777745e-03  1.1989131e-04
  [-1.3929410e-03 -5.6704972e-05 -2.0325142e-03  3.1692439e-04
   -2.7163568e-04  7.8263544e-03  1.0000226e+00]]
 ```
+## Citation
+
+```bibtex
+@inproceedings{octo_2023,
+    title={Octo: An Open-Source Generalist Robot Policy},
+    author = {{Octo Model Team} and Dibya Ghosh and Homer Walke and Karl Pertsch and Kevin Black and Oier Mees and Sudeep Dasari and Joey Hejna and Charles Xu and Jianlan Luo and Tobias Kreiman and {You Liang} Tan and Pannag Sanketi and Quan Vuong and Ted Xiao and Dorsa Sadigh and Chelsea Finn and Sergey Levine},
+    booktitle = {Proceedings of Robotics: Science and Systems},
+    address  = {Delft, Netherlands},
+    year = {2024},
+}
+```
