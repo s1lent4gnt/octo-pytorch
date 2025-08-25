@@ -1,10 +1,14 @@
+import json
 import os
 from typing import Dict, List, Optional, Sequence
 
-os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+import numpy as np
 import torch
 import torch.nn as nn
+from huggingface_hub import HfApi
+from safetensors.torch import save_file
 from transformers import PreTrainedModel
 
 from octo_pytorch.model.components.action_heads import DiffusionActionHead
@@ -22,6 +26,7 @@ from octo_pytorch.utils.text_processing import TextProcessor
 
 class OctoModel(PreTrainedModel):
     """Implementation of the Octo model."""
+
     config = OctoConfig
 
     def __init__(self, config: OctoConfig):
@@ -83,6 +88,241 @@ class OctoModel(PreTrainedModel):
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
         model = super().from_pretrained(pretrained_model_name_or_path, **kwargs)
         return model
+
+    def push_to_hub(
+        self,
+        repo_id: str,
+        private: bool = False,
+        commit_message: str = None,
+        dataset_statistics_path: Optional[str] = None,
+        local_save_path: Optional[str] = None,
+    ):
+        """Push the model to HuggingFace Hub with model card.
+
+        Args:
+            repo_id: HuggingFace Hub repository ID (e.g., 'username/model-name')
+            private: Whether to make the repository private
+            commit_message: Custom commit message (default: 'Upload {model_name} pretrained weights')
+            dataset_statistics_path: Optional path to dataset statistics file
+            local_save_path: Optional local directory to save files before uploading
+        """
+        # Determine model name from config
+        model_name = (
+            self.config.model_name
+            if hasattr(self.config, "model_name")
+            else "octo-model"
+        )
+
+        # Set default commit message if not provided
+        if commit_message is None:
+            commit_message = f"Upload {model_name} pretrained weights"
+
+        # Set default local save path if not provided
+        if local_save_path is None:
+            local_save_path = f"output/output_hub/{model_name}_hub"
+
+        # Create local save directory
+        os.makedirs(local_save_path, exist_ok=True)
+
+        # Save model weights in safetensors format
+        model_path = os.path.join(local_save_path, "model.safetensors")
+        print(f"Saving model weights to {model_path}...")
+
+        # Get state dict and handle shared tensors
+        state_dict = self.state_dict()
+
+        # Remove T5 encoder weights since T5-base is already on HuggingFace Hub
+        keys_to_remove = []
+        for key in state_dict.keys():
+            if "task_tokenizers.language_instruction.t5_encoder" in key:
+                keys_to_remove.append(key)
+
+        # Create a new state dict without the T5 weights
+        filtered_state_dict = {
+            k: v for k, v in state_dict.items() if k not in keys_to_remove
+        }
+
+        if keys_to_remove:
+            print(
+                f"Excluded T5 encoder weights ({len(keys_to_remove)} tensors) - T5-base will be loaded from HuggingFace Hub"
+            )
+
+        save_file(filtered_state_dict, model_path)
+
+        # Save dataset statistics if provided
+        if dataset_statistics_path and os.path.exists(dataset_statistics_path):
+            print(f"Loading dataset statistics from {dataset_statistics_path}...")
+            octo_stats = np.load(dataset_statistics_path, allow_pickle=True).item()
+            stats_save_path = os.path.join(local_save_path, "dataset_statistics.npy")
+            np.save(stats_save_path, octo_stats)
+            print(f"Saved dataset statistics to {stats_save_path}")
+
+        # Create config.json for model metadata
+        config_dict = {
+            "model_type": "octo",
+            "model_name": model_name,
+            "token_embedding_size": self.config.token_embedding_size,
+            "num_layers": self.config.num_layers,
+            "num_heads": self.config.num_heads,
+            "mlp_dim": self.config.mlp_dim,
+            "max_horizon": self.config.action_max_horizon,
+            "repeat_task_tokens": self.config.repeat_task_tokens,
+            "action_horizon": self.action_head.action_horizon,
+            "action_dim": self.action_head.action_dim,
+            "diffusion_steps": self.action_head.diffusion_steps,
+        }
+
+        config_path = os.path.join(local_save_path, "config.json")
+        with open(config_path, "w") as f:
+            json.dump(config_dict, f, indent=2)
+        print(f"Saved model config to {config_path}")
+
+        # Create model card
+        model_card_content = self._generate_model_card(model_name, repo_id)
+        model_card_path = os.path.join(local_save_path, "README.md")
+        with open(model_card_path, "w") as f:
+            f.write(model_card_content)
+        print(f"Created model card at {model_card_path}")
+
+        # Push to hub
+        print(f"Pushing to HuggingFace Hub: {repo_id}...")
+
+        # Initialize HuggingFace API
+        api = HfApi()
+
+        # Create repository if it doesn't exist
+        try:
+            api.create_repo(
+                repo_id=repo_id,
+                private=private,
+                exist_ok=True,
+                repo_type="model",
+            )
+            print(f"Repository {repo_id} created/verified on HuggingFace Hub")
+        except Exception as e:
+            print(f"Error creating repository: {e}")
+            raise
+
+        # Upload the entire folder to the hub
+        try:
+            api.upload_folder(
+                folder_path=local_save_path,
+                repo_id=repo_id,
+                repo_type="model",
+                commit_message=commit_message,
+            )
+            print(f"Successfully uploaded to https://huggingface.co/{repo_id}")
+        except Exception as e:
+            print(f"Error uploading to hub: {e}")
+            raise
+
+        print("Push to hub completed successfully!")
+
+    def _generate_model_card(self, model_name: str, repo_id: str) -> str:
+        """Generate a model card for the HuggingFace Hub.
+
+        Args:
+            model_name: Name of the model (e.g., 'octo-small', 'octo-base')
+            repo_id: Repository ID on HuggingFace Hub
+
+        Returns:
+            Model card content as a string
+        """
+        # Determine model size description
+        if model_name == "octo-base":
+            architecture_desc = "12 layers, 768 dim, 12 heads"
+        elif model_name == "octo-small":
+            architecture_desc = "12 layers, 384 dim, 6 heads"
+        else:
+            architecture_desc = f"{self.config.num_layers} layers, {self.config.token_embedding_size} dim, {self.config.num_heads} heads"
+
+        model_card = f"""---
+license: mit
+tags:
+- robotics
+- imitation-learning
+- octo
+- pytorch
+---
+
+# {model_name.title()} PyTorch Model
+
+This is the {model_name} model converted to PyTorch format.
+
+## Model Description
+
+Octo is a generalist robot policy trained on diverse robot manipulation tasks.
+
+- **Paper**: [Octo: An Open-Source Generalist Robot Policy](https://arxiv.org/pdf/2405.12213)
+- **Original Implementation**: [octo-models/octo](https://github.com/octo-models/octo)
+- **Model Size**: {model_name}
+
+## Usage
+
+### Loading the pretrained model
+
+```python
+import torch
+from safetensors.torch import load_file
+import json
+from octo_pytorch.model import OctoModel
+from octo_pytorch.model.configuration_octo import OctoConfig
+
+# Load config
+with open('config.json', 'r') as f:
+    config_dict = json.load(f)
+
+# Initialize model configuration
+config = OctoConfig(model_name=config_dict['model_name'])
+
+# Initialize model
+model = OctoModel(config)
+
+# Load weights (T5 encoder weights will be loaded automatically from HuggingFace Hub)
+state_dict = load_file('model.safetensors')
+model.load_state_dict(state_dict, strict=False)  # strict=False because T5 weights are not in the file
+```
+
+### Alternative: Direct loading from HuggingFace Hub
+
+```python
+from octo_pytorch.model import OctoModel
+
+# Load model directly from HuggingFace Hub
+model = OctoModel.from_pretrained('{repo_id}')
+```
+
+**Note**: The T5-base language encoder weights are not included in this upload to save space. They will be automatically downloaded from HuggingFace Hub when you initialize the model.
+
+### Model Architecture
+
+- **Transformer**: {architecture_desc}
+- **Vision Encoder**: Custom CNN (SmallStem16)
+- **Language Encoder**: T5-Base
+- **Action Head**: Diffusion policy with {self.action_head.action_horizon} action steps
+- **Max Horizon**: {self.config.action_max_horizon} timesteps
+- **Action Dimension**: {self.action_head.action_dim}
+
+## Files
+
+- `model.safetensors`: Model weights in safetensors format
+- `config.json`: Model configuration
+- `dataset_statistics.npy`: Dataset statistics used for normalization (if available)
+
+## Citation
+
+If you use this model, please cite:
+
+```bibtex
+@article{{octo_2023,
+    title={{Octo: An Open-Source Generalist Robot Policy}},
+    author={{Octo Model Team et al.}},
+    journal={{arXiv preprint arXiv:2405.12213}},
+    year={{2024}}
+}}
+```
+"""
+        return model_card
 
     def create_tasks(
         self, goals: Optional[Dict[str, torch.Tensor]] = None, texts: Optional[Sequence[str]] = None
