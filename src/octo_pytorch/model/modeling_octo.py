@@ -93,7 +93,6 @@ class OctoModel(PreTrainedModel):
         self,
         repo_id: str,
         private: bool = False,
-        commit_message: str = None,
         dataset_statistics_path: Optional[str] = None,
         local_save_path: Optional[str] = None,
     ):
@@ -102,31 +101,21 @@ class OctoModel(PreTrainedModel):
         Args:
             repo_id: HuggingFace Hub repository ID (e.g., 'username/model-name')
             private: Whether to make the repository private
-            commit_message: Custom commit message (default: 'Upload {model_name} pretrained weights')
             dataset_statistics_path: Optional path to dataset statistics file
             local_save_path: Optional local directory to save files before uploading
         """
-        # Determine model name from config
         model_name = (
             self.config.model_name
             if hasattr(self.config, "model_name")
             else "octo-model"
         )
 
-        # Set default commit message if not provided
-        if commit_message is None:
-            commit_message = f"Upload {model_name} pretrained weights"
-
         # Set default local save path if not provided
         if local_save_path is None:
             local_save_path = f"output/output_hub/{model_name}_hub"
 
-        # Create local save directory
         os.makedirs(local_save_path, exist_ok=True)
-
-        # Save model weights in safetensors format
         model_path = os.path.join(local_save_path, "model.safetensors")
-        print(f"Saving model weights to {model_path}...")
 
         # Get state dict and handle shared tensors
         state_dict = self.state_dict()
@@ -149,13 +138,10 @@ class OctoModel(PreTrainedModel):
 
         save_file(filtered_state_dict, model_path)
 
-        # Save dataset statistics if provided
         if dataset_statistics_path and os.path.exists(dataset_statistics_path):
-            print(f"Loading dataset statistics from {dataset_statistics_path}...")
             octo_stats = np.load(dataset_statistics_path, allow_pickle=True).item()
             stats_save_path = os.path.join(local_save_path, "dataset_statistics.npy")
             np.save(stats_save_path, octo_stats)
-            print(f"Saved dataset statistics to {stats_save_path}")
 
         # Create config.json for model metadata
         config_dict = {
@@ -175,22 +161,15 @@ class OctoModel(PreTrainedModel):
         config_path = os.path.join(local_save_path, "config.json")
         with open(config_path, "w") as f:
             json.dump(config_dict, f, indent=2)
-        print(f"Saved model config to {config_path}")
 
         # Create model card
         model_card_content = self._generate_model_card(model_name, repo_id)
         model_card_path = os.path.join(local_save_path, "README.md")
         with open(model_card_path, "w") as f:
             f.write(model_card_content)
-        print(f"Created model card at {model_card_path}")
 
-        # Push to hub
-        print(f"Pushing to HuggingFace Hub: {repo_id}...")
-
-        # Initialize HuggingFace API
         api = HfApi()
 
-        # Create repository if it doesn't exist
         try:
             api.create_repo(
                 repo_id=repo_id,
@@ -209,14 +188,11 @@ class OctoModel(PreTrainedModel):
                 folder_path=local_save_path,
                 repo_id=repo_id,
                 repo_type="model",
-                commit_message=commit_message,
             )
             print(f"Successfully uploaded to https://huggingface.co/{repo_id}")
         except Exception as e:
             print(f"Error uploading to hub: {e}")
             raise
-
-        print("Push to hub completed successfully!")
 
     def _generate_model_card(self, model_name: str, repo_id: str) -> str:
         """Generate a model card for the HuggingFace Hub.
@@ -233,8 +209,6 @@ class OctoModel(PreTrainedModel):
             architecture_desc = "12 layers, 768 dim, 12 heads"
         elif model_name == "octo-small":
             architecture_desc = "12 layers, 384 dim, 6 heads"
-        else:
-            architecture_desc = f"{self.config.num_layers} layers, {self.config.token_embedding_size} dim, {self.config.num_heads} heads"
 
         model_card = f"""---
 license: mit
@@ -254,7 +228,9 @@ This is the {model_name} model converted to PyTorch format.
 Octo is a generalist robot policy trained on diverse robot manipulation tasks.
 
 - **Paper**: [Octo: An Open-Source Generalist Robot Policy](https://arxiv.org/pdf/2405.12213)
-- **Original Implementation**: [octo-models/octo](https://github.com/octo-models/octo)
+- **Original JAX Implementation**: [octo-models/octo](https://github.com/octo-models/octo)
+- **Original Pytorch Implementation**: [emb-ai/octo-pytorch](https://github.com/emb-ai/octo-pytorch)
+- **lil'km Implementation**: [s1lent4gnt/octo-pytorch](https://github.com/s1lent4gnt/octo-pytorch)
 - **Model Size**: {model_name}
 
 ## Usage
