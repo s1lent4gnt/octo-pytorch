@@ -1,32 +1,31 @@
+import os
+import sys
+import time
+from datetime import datetime
+from typing import Dict
+
+import gymnasium as gym
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from octo_pytorch.model.octo_model import (
-    OctoModel,
-    TokenGroup,
-    continous_loss,
-)
-from lerobot.datasets.lerobot_dataset import LeRobotDataset
-from typing import Dict
-from lerobot.utils.utils import format_big_number
-from lerobot.datasets.utils import cycle
-import wandb
-import time
-from datetime import datetime
-import gymnasium as gym
-import os
-import sys
 import torchvision.transforms.functional as F
+from lerobot.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.datasets.utils import cycle
+from lerobot.utils.utils import format_big_number
+from octo_pytorch.model.modeling_octo import OctoModel, TokenGroup, continous_loss
 
+import wandb
 
 # Add the lerobot path to the python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "output/lerobot/src")))
+sys.path.append(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "output/lerobot/src"))
+)
 
 
 from lerobot.scripts.rl.gym_manipulator import (
-    GymHilObservationProcessorWrapper,
-    GymHilDeviceWrapper,
     BatchCompatibleWrapper,
+    GymHilDeviceWrapper,
+    GymHilObservationProcessorWrapper,
     TorchActionWrapper,
 )
 
@@ -99,11 +98,15 @@ class L1ActionHead(nn.Module):
         embeddings = token_group.tokens.mean(dim=-2)  # (batch, timesteps, embed_dim)
 
         # Predict actions
-        actions_flat = self.mlp(embeddings)  # (batch, timesteps, action_dim * action_horizon)
+        actions_flat = self.mlp(
+            embeddings
+        )  # (batch, timesteps, action_dim * action_horizon)
 
         # Reshape to (batch, timesteps, action_horizon, action_dim)
         batch_size, timesteps = actions_flat.shape[:2]
-        actions = actions_flat.view(batch_size, timesteps, self.action_horizon, self.action_dim)
+        actions = actions_flat.view(
+            batch_size, timesteps, self.action_horizon, self.action_dim
+        )
 
         return actions
 
@@ -118,7 +121,9 @@ class L1ActionHead(nn.Module):
 
         return loss, metrics
 
-    def predict_action(self, transformer_outputs, embodiment_action_dim=None, sample_shape=()):
+    def predict_action(
+        self, transformer_outputs, embodiment_action_dim=None, sample_shape=()
+    ):
         """Predict actions for inference."""
         actions = self.forward(transformer_outputs)
         # Return last timestep
@@ -157,7 +162,9 @@ def modify_model_for_new_spaces(
         action_dim=action_dim,
         action_horizon=action_horizon,
     )
-    print(f"Replaced action head with L1ActionHead (action_dim={action_dim}, horizon={action_horizon})")
+    print(
+        f"Replaced action head with L1ActionHead (action_dim={action_dim}, horizon={action_horizon})"
+    )
 
     return model
 
@@ -183,7 +190,9 @@ def merge_pretrained_weights(
                 loaded_keys.append(key)
             else:
                 merged_state[key] = model_state[key]
-                skipped_keys.append(f"{key} (shape mismatch: {value.shape} vs {model_state[key].shape})")
+                skipped_keys.append(
+                    f"{key} (shape mismatch: {value.shape} vs {model_state[key].shape})"
+                )
         else:
             skipped_keys.append(f"{key} (not in model)")
 
@@ -214,7 +223,7 @@ def transform_batch(batch, model, device):
     Transforms a batch from the LeRobotDataset format to the format expected by the OctoModel.
     """
     image_primary = batch["observation.images.front"].to(device)
-    image_wrist = batch["observation.images.wrist"].to(device)
+    batch["observation.images.wrist"].to(device)
     proprio = batch["observation.state"].to(device)
     raw_actions = batch["action"].to(device)
 
@@ -232,42 +241,56 @@ def transform_batch(batch, model, device):
     timestep = torch.zeros((batch_size, window_size), dtype=torch.int32, device=device)
 
     # Create timestep_pad_mask - all True since we have real data (no padding)
-    timestep_pad_mask = torch.ones((batch_size, window_size), dtype=torch.bool, device=device)
+    timestep_pad_mask = torch.ones(
+        (batch_size, window_size), dtype=torch.bool, device=device
+    )
 
-    task_completed = torch.zeros((batch_size, window_size, action_horizon), dtype=torch.bool, device=device)
+    task_completed = torch.zeros(
+        (batch_size, window_size, action_horizon), dtype=torch.bool, device=device
+    )
 
     # Create pad_mask_dict for observations
     obs_pad_mask_dict = {
-        "image_primary": torch.ones((batch_size, window_size), dtype=torch.bool, device=device),
-        "proprio": torch.ones((batch_size, window_size), dtype=torch.bool, device=device),
-        "timestep": torch.ones((batch_size, window_size), dtype=torch.bool, device=device),
+        "image_primary": torch.ones(
+            (batch_size, window_size), dtype=torch.bool, device=device
+        ),
+        "proprio": torch.ones(
+            (batch_size, window_size), dtype=torch.bool, device=device
+        ),
+        "timestep": torch.ones(
+            (batch_size, window_size), dtype=torch.bool, device=device
+        ),
     }
 
     observations = {
         "image_primary": image_primary,
         "proprio": proprio,
-        'timestep': timestep,
-        'timestep_pad_mask': timestep_pad_mask,
-        'task_completed': task_completed,
-        'pad_mask_dict': obs_pad_mask_dict
+        "timestep": timestep,
+        "timestep_pad_mask": timestep_pad_mask,
+        "task_completed": task_completed,
+        "pad_mask_dict": obs_pad_mask_dict,
     }
 
     language_instruction = model.text_processor.encode(raw_tasks)
     language_instruction = {k: v.to(device) for k, v in language_instruction.items()}
 
     task_pad_mask_dict = {
-        'language_instruction': torch.ones(batch_size, dtype=torch.bool, device=device)
+        "language_instruction": torch.ones(batch_size, dtype=torch.bool, device=device)
     }
 
     tasks = {
-        'language_instruction': language_instruction,
-        'pad_mask_dict': task_pad_mask_dict
+        "language_instruction": language_instruction,
+        "pad_mask_dict": task_pad_mask_dict,
     }
 
     x_y_z = raw_actions[:, :3]  # x, y, z
     gripper = raw_actions[:, 3:4]  # gripper
-    rx_ry_rz = torch.zeros((batch_size, 3), dtype=raw_actions.dtype, device=device)  # rx, ry, rz as zeros
-    raw_actions = torch.cat([x_y_z, rx_ry_rz, gripper], dim=1)  # x, y, z, rx, ry, rz, gripper
+    rx_ry_rz = torch.zeros(
+        (batch_size, 3), dtype=raw_actions.dtype, device=device
+    )  # rx, ry, rz as zeros
+    raw_actions = torch.cat(
+        [x_y_z, rx_ry_rz, gripper], dim=1
+    )  # x, y, z, rx, ry, rz, gripper
 
     actions = raw_actions.reshape(batch_size, window_size, 1, action_dim)
     actions = actions.repeat(1, 1, action_horizon, 1)
@@ -292,17 +315,17 @@ def move_to_device(batch, device):
     else:
         return batch
 
+
 def transform_observation_for_eval(obs, model, device):
     """
     Transforms a single observation from the gym-hil environment to the format expected by the OctoModel.
     """
     image_primary_from_env = obs["observation.images.front"]
-    image_wrist_from_env = obs["observation.images.wrist"]
+    obs["observation.images.wrist"]
     proprio = obs["observation.state"]
 
     image_primary = F.resize(image_primary_from_env, (256, 256), antialias=True)
     # image_wrist = F.resize(image_wrist_from_env, (128, 128), antialias=True)
-    image_wrist = image_wrist_from_env
 
     batch_size = 1
     window_size = 1
@@ -313,23 +336,33 @@ def transform_observation_for_eval(obs, model, device):
     proprio = proprio.unsqueeze(1)
 
     timestep = torch.zeros((batch_size, window_size), dtype=torch.int32, device=device)
-    timestep_pad_mask = torch.ones((batch_size, window_size), dtype=torch.bool, device=device)
+    timestep_pad_mask = torch.ones(
+        (batch_size, window_size), dtype=torch.bool, device=device
+    )
 
-    task_completed = torch.zeros((batch_size, window_size, action_horizon), dtype=torch.bool, device=device)
+    task_completed = torch.zeros(
+        (batch_size, window_size, action_horizon), dtype=torch.bool, device=device
+    )
 
     obs_pad_mask_dict = {
-        "image_primary": torch.ones((batch_size, window_size), dtype=torch.bool, device=device),
-        "proprio": torch.ones((batch_size, window_size), dtype=torch.bool, device=device),
-        "timestep": torch.ones((batch_size, window_size), dtype=torch.bool, device=device),
+        "image_primary": torch.ones(
+            (batch_size, window_size), dtype=torch.bool, device=device
+        ),
+        "proprio": torch.ones(
+            (batch_size, window_size), dtype=torch.bool, device=device
+        ),
+        "timestep": torch.ones(
+            (batch_size, window_size), dtype=torch.bool, device=device
+        ),
     }
 
     observations = {
         "image_primary": image_primary,
         "proprio": proprio,
-        'timestep': timestep,
-        'timestep_pad_mask': timestep_pad_mask,
-        'task_completed': task_completed,
-        'pad_mask_dict': obs_pad_mask_dict
+        "timestep": timestep,
+        "timestep_pad_mask": timestep_pad_mask,
+        "task_completed": task_completed,
+        "pad_mask_dict": obs_pad_mask_dict,
     }
 
     return observations, timestep_pad_mask
@@ -347,20 +380,32 @@ def evaluate_policy(model, env, num_episodes=3, episode_time_limit_s=30):
 
         raw_tasks = ["pick the pink cube"]
         language_instruction = model.text_processor.encode(raw_tasks)
-        language_instruction = {k: v.to(device) for k, v in language_instruction.items()}
+        language_instruction = {
+            k: v.to(device) for k, v in language_instruction.items()
+        }
 
         tasks = {
-            'language_instruction': language_instruction,
-            'pad_mask_dict': {'language_instruction': torch.ones(1, dtype=torch.bool, device=device)}
+            "language_instruction": language_instruction,
+            "pad_mask_dict": {
+                "language_instruction": torch.ones(1, dtype=torch.bool, device=device)
+            },
         }
 
         while time.perf_counter() - start_episode_t < episode_time_limit_s:
             start_time = time.perf_counter()
-            observations, timestep_pad_mask = transform_observation_for_eval(obs, model, device)
+            observations, timestep_pad_mask = transform_observation_for_eval(
+                obs, model, device
+            )
 
             with torch.no_grad():
                 # When training=False, the model returns actions directly
-                actions = model(observations, tasks, timestep_pad_mask, embodiment_action_dim=7, training=False)
+                actions = model(
+                    observations,
+                    tasks,
+                    timestep_pad_mask,
+                    embodiment_action_dim=7,
+                    training=False,
+                )
 
             action_tensor = actions.squeeze(0)[0]
 
@@ -383,7 +428,7 @@ def evaluate_policy(model, env, num_episodes=3, episode_time_limit_s=30):
 
 
 def main():
-    nb_epochs = 1000 # int(1e5)
+    nb_epochs = 1000  # int(1e5)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     repo_id = "lilkm/panda_pick_octo_resized"
     model_name = "octo-small"
@@ -443,12 +488,12 @@ def main():
 
     print(f"Loading dataset: {repo_id}")
     dataset = LeRobotDataset(repo_id)
-    
+
     # Get a sample batch to determine the actual proprio dimension
     sample_batch = dataset[0]
     actual_proprio_dim = sample_batch["observation.state"].shape[-1]
     print(f"Detected proprio dimension from dataset: {actual_proprio_dim}")
-    
+
     # Re-configure the model with the correct proprio dimension
     model = modify_model_for_new_spaces(
         model,
@@ -456,13 +501,13 @@ def main():
         action_dim=7,
         action_horizon=4,
     )
-    
+
     # Re-load pretrained weights after model modification
     pretrained_state_dict = torch.load(checkpoint_path, map_location="cpu")
     merge_pretrained_weights(model, pretrained_state_dict)
-    
+
     model = model.to(device)
-    
+
     # Create a temporary dataloader to preprocess the entire dataset on CPU
     temp_dataloader = torch.utils.data.DataLoader(
         dataset,
@@ -470,7 +515,7 @@ def main():
         batch_size=batch_size,
         shuffle=False,
         pin_memory=False,
-        drop_last=False
+        drop_last=False,
     )
 
     preprocessed_batches = []
@@ -483,21 +528,23 @@ def main():
     dl_iter = cycle(preprocessed_batches)
 
     optimizer = optim.AdamW(
-        model.parameters(),
-        lr=learning_rate,
-        weight_decay=weight_decay
+        model.parameters(), lr=learning_rate, weight_decay=weight_decay
     )
 
     num_learnable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     num_total_params = sum(p.numel() for p in model.parameters())
 
     print(f"\n{'='*50}")
-    print(f"Training Configuration:")
+    print("Training Configuration:")
     print(f"{'='*50}")
     print(f"Device: {device}")
-    print(f"Dataset frames: {dataset.num_frames} ({format_big_number(dataset.num_frames)})")
+    print(
+        f"Dataset frames: {dataset.num_frames} ({format_big_number(dataset.num_frames)})"
+    )
     print(f"Dataset episodes: {dataset.num_episodes}")
-    print(f"Learnable params: {num_learnable_params} ({format_big_number(num_learnable_params)})")
+    print(
+        f"Learnable params: {num_learnable_params} ({format_big_number(num_learnable_params)})"
+    )
     print(f"Total params: {num_total_params} ({format_big_number(num_total_params)})")
     print(f"Batch size: {batch_size}")
     print(f"Learning rate: {learning_rate}")
@@ -514,19 +561,26 @@ def main():
         cpu_batch = next(dl_iter)
 
         # Move batch to device
-        observations, tasks, actions, action_pad_mask, timestep_pad_mask = move_to_device(cpu_batch, device)
-        transformer_outputs = model(observations, tasks, timestep_pad_mask, training=True)
+        (
+            observations,
+            tasks,
+            actions,
+            action_pad_mask,
+            timestep_pad_mask,
+        ) = move_to_device(cpu_batch, device)
+        transformer_outputs = model(
+            observations, tasks, timestep_pad_mask, training=True
+        )
 
         loss, metrics = model.action_head.loss(
-            transformer_outputs,
-            actions,
-            timestep_pad_mask,
-            action_pad_mask
+            transformer_outputs, actions, timestep_pad_mask, action_pad_mask
         )
 
         optimizer.zero_grad()
         loss.backward()
-        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=clip_gradient)
+        grad_norm = torch.nn.utils.clip_grad_norm_(
+            model.parameters(), max_norm=clip_gradient
+        )
         optimizer.step()
         step_time = time.time() - step_start_time
 
@@ -551,9 +605,11 @@ def main():
                     else:
                         log_dict[key] = value
 
-            print(f"Step {step:06d} | Loss: {loss.item():.4f} | "
-                  f"Grad Norm: {grad_norm.item():.4f} | "
-                  f"Steps/s: {steps_per_second:.2f}")
+            print(
+                f"Step {step:06d} | Loss: {loss.item():.4f} | "
+                f"Grad Norm: {grad_norm.item():.4f} | "
+                f"Steps/s: {steps_per_second:.2f}"
+            )
 
             if use_wandb:
                 wandb.log(log_dict, step=step)
@@ -563,7 +619,6 @@ def main():
     torch.save(model.state_dict(), final_model_path)
     print(f"Final model saved to {final_model_path}")
 
-    import gym_hil
     eval_env = gym.make(
         "gym_hil/PandaPickCubeGamepad-v0",
         image_obs=True,
@@ -583,6 +638,7 @@ def main():
     if use_wandb:
         wandb.log({"final_eval_avg_reward": avg_reward})
         wandb.finish()
+
 
 if __name__ == "__main__":
     main()

@@ -3,14 +3,13 @@ import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import argparse
-import random
 
 import jax
 import numpy as np
 import torch
 from octo.model.octo_model import OctoModel as JaxOctoModel
-
-from octo_pytorch.model.octo_model import OctoModel as PyTorchOctoModel
+from octo_pytorch.model.configuration_octo import OctoConfig as PytorchOctoConfig
+from octo_pytorch.model.modeling_octo import OctoModel as PyTorchOctoModel
 
 
 def main():
@@ -69,31 +68,46 @@ def main():
 
     # variables[1]["intermediates"]["octo_transformer"]["tasks"]
     # variables[1]["intermediates"]["octo_transformer"]["observations"]
-    jax_prefix_groups = variables[1]["intermediates"]["octo_transformer"]["all_prefix_groups"][0][0].tokens
+    jax_prefix_groups = variables[1]["intermediates"]["octo_transformer"][
+        "all_prefix_groups"
+    ][0][0].tokens
     jax_timestep_groups_obs_primary = variables[1]["intermediates"]["octo_transformer"][
         "all_timestep_groups"
-    ][0][0].tokens  # obs_primary
-    jax_timestep_groups_obs_wrist = variables[1]["intermediates"]["octo_transformer"]["all_timestep_groups"][
+    ][0][
         0
-    ][1].tokens  # obs_wrist
-    jax_timestep_groups_obs_task_language = variables[1]["intermediates"]["octo_transformer"][
+    ].tokens  # obs_primary
+    jax_timestep_groups_obs_wrist = variables[1]["intermediates"]["octo_transformer"][
         "all_timestep_groups"
-    ][0][2].tokens  # obs_task_language
-    jax_timestep_groups_readout = variables[1]["intermediates"]["octo_transformer"]["all_timestep_groups"][0][
+    ][0][
+        1
+    ].tokens  # obs_wrist
+    jax_timestep_groups_obs_task_language = variables[1]["intermediates"][
+        "octo_transformer"
+    ]["all_timestep_groups"][0][
+        2
+    ].tokens  # obs_task_language
+    jax_timestep_groups_readout = variables[1]["intermediates"]["octo_transformer"][
+        "all_timestep_groups"
+    ][0][
         3
     ].tokens  # readout_action
-    jax_transformer_outputs = variables[0]["readout_action"].tokens  # readout_action output
+    jax_transformer_outputs = variables[0][
+        "readout_action"
+    ].tokens  # readout_action output
 
     jax_action = jax_model.sample_actions(
         jax_observation,
         jax_task,
-        unnormalization_statistics=jax_model.dataset_statistics["bridge_dataset"]["action"],
+        unnormalization_statistics=jax_model.dataset_statistics["bridge_dataset"][
+            "action"
+        ],
         rng=jax.random.PRNGKey(0),
     )
 
     # ##############################################
 
-    torch_model = PyTorchOctoModel(model_name=model_name, repeat_task_tokens=True)
+    cfg = PytorchOctoConfig(model_name=model_name)
+    torch_model = PyTorchOctoModel(cfg)
     torch_model.load_state_dict(torch.load(f"output/pytorch_{model_name}_model.pth"))
     torch_model.eval()
     print("Model loaded successfully.")
@@ -102,8 +116,15 @@ def main():
     dunmmy_image_wrist = np.zeros(shape=(128, 128, 3), dtype=np.float32)
     task_text = ["pick up the fork"]
 
-    torch_image_primary = torch.from_numpy(dunmmy_image_primary).to(torch.float32).unsqueeze(0).unsqueeze(0)
-    torch_image_wrist = torch.from_numpy(dunmmy_image_wrist).to(torch.float32).unsqueeze(0).unsqueeze(0)
+    torch_image_primary = (
+        torch.from_numpy(dunmmy_image_primary)
+        .to(torch.float32)
+        .unsqueeze(0)
+        .unsqueeze(0)
+    )
+    torch_image_wrist = (
+        torch.from_numpy(dunmmy_image_wrist).to(torch.float32).unsqueeze(0).unsqueeze(0)
+    )
 
     torch_observations = {
         "image_primary": torch_image_primary,
@@ -133,19 +154,31 @@ def main():
     # torch_model.timestep_groups.register_forward_hook(get_hook('timestep_groups'))
     # torch_model.transformer_outputs.register_forward_hook(get_hook('transformer_outputs'))
 
-    torch_prefix_groups = torch_model.prefix_groups[0].tokens.detach()
-    torch_timestep_groups_obs_primary = torch_model.timestep_groups[0].tokens.detach()
-    torch_timestep_groups_obs_wrist = torch_model.timestep_groups[1].tokens.detach()
-    torch_timestep_groups_obs_task_language = torch_model.timestep_groups[2].tokens.detach()
-    torch_timestep_groups_readout = torch_model.timestep_groups[3].tokens.detach()
-    torch_transformer_outputs = torch_model.transformer_outputs["readout_action"].tokens.detach()
+    torch_prefix_groups = torch_model.octo_transformer.prefix_groups[0].tokens.detach()
+    torch_timestep_groups_obs_primary = torch_model.octo_transformer.timestep_groups[
+        0
+    ].tokens.detach()
+    torch_timestep_groups_obs_wrist = torch_model.octo_transformer.timestep_groups[
+        1
+    ].tokens.detach()
+    torch_timestep_groups_obs_task_language = (
+        torch_model.octo_transformer.timestep_groups[2].tokens.detach()
+    )
+    torch_timestep_groups_readout = torch_model.octo_transformer.timestep_groups[
+        3
+    ].tokens.detach()
+    torch_transformer_outputs = torch_model.transformer_outputs[
+        "readout_action"
+    ].tokens.detach()
 
-    stats = np.load(f"output/dataset_statistics_{model_name}.npy", allow_pickle=True).item()
+    stats = np.load(
+        f"output/dataset_statistics_{model_name}.npy", allow_pickle=True
+    ).item()
     action_stats = stats["bridge_dataset"]["action"]
     # Ensure stats are float32 to match model's precision
     mask = action_stats.get("mask", np.ones_like(action_stats["mean"]))
     mask = torch.from_numpy(mask).to(torch_action.device).bool()
-    torch_action = torch_action[..., :len(mask)]
+    torch_action = torch_action[..., : len(mask)]
     mean = torch.from_numpy(action_stats["mean"]).to(torch_action.device).float()
     std = torch.from_numpy(action_stats["std"]).to(torch_action.device).float()
     torch_action = torch.where(mask, torch_action * std + mean, torch_action)
@@ -154,8 +187,12 @@ def main():
     print("Finished inference.")
 
     print("Prefix groups")
-    print(f"mean diff: {np.mean(np.abs(np.array(jax_prefix_groups) - torch_prefix_groups.numpy()))}")
-    print(f"max diff: {np.max(np.abs(np.array(jax_prefix_groups) - torch_prefix_groups.numpy()))}")
+    print(
+        f"mean diff: {np.mean(np.abs(np.array(jax_prefix_groups) - torch_prefix_groups.numpy()))}"
+    )
+    print(
+        f"max diff: {np.max(np.abs(np.array(jax_prefix_groups) - torch_prefix_groups.numpy()))}"
+    )
 
     print("Timestep group obs primary")
     print(

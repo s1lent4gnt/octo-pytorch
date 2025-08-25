@@ -1,22 +1,31 @@
-import torch
-import torch.optim as optim
-from octo_pytorch.model.octo_model import OctoModel
-from lerobot.datasets.lerobot_dataset import LeRobotDataset
-from lerobot.utils.utils import format_big_number
-from lerobot.datasets.utils import cycle
-import wandb
-import time
-from datetime import datetime
-import gymnasium as gym
 import os
 import sys
-import torchvision.transforms.functional as F
+import time
+from datetime import datetime
 
+import gymnasium as gym
+import torch
+import torch.optim as optim
+import torchvision.transforms.functional as F
+from lerobot.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.datasets.utils import cycle
+from lerobot.utils.utils import format_big_number
+from octo_pytorch.model.modeling_octo import OctoModel
+
+import wandb
 
 # Add the lerobot path to the python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'output/lerobot/src')))
+sys.path.append(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "output/lerobot/src"))
+)
 
-from lerobot.scripts.rl.gym_manipulator import GymHilObservationProcessorWrapper, GymHilDeviceWrapper, BatchCompatibleWrapper, TorchActionWrapper
+from lerobot.scripts.rl.gym_manipulator import (
+    BatchCompatibleWrapper,
+    GymHilDeviceWrapper,
+    GymHilObservationProcessorWrapper,
+    TorchActionWrapper,
+)
+
 
 def transform_batch(batch, model, device):
     """
@@ -42,44 +51,60 @@ def transform_batch(batch, model, device):
     timestep = torch.zeros((batch_size, window_size), dtype=torch.int32, device=device)
 
     # Create timestep_pad_mask - all True since we have real data (no padding)
-    timestep_pad_mask = torch.ones((batch_size, window_size), dtype=torch.bool, device=device)
+    timestep_pad_mask = torch.ones(
+        (batch_size, window_size), dtype=torch.bool, device=device
+    )
 
-    task_completed = torch.zeros((batch_size, window_size, action_horizon), dtype=torch.bool, device=device)
+    task_completed = torch.zeros(
+        (batch_size, window_size, action_horizon), dtype=torch.bool, device=device
+    )
 
     # Create pad_mask_dict for observations
     obs_pad_mask_dict = {
-        'image_primary': torch.ones((batch_size, window_size), dtype=torch.bool, device=device),
-        'image_wrist': torch.ones((batch_size, window_size), dtype=torch.bool, device=device),
-        'proprio': torch.ones((batch_size, window_size), dtype=torch.bool, device=device),
-        'timestep': torch.ones((batch_size, window_size), dtype=torch.bool, device=device),
+        "image_primary": torch.ones(
+            (batch_size, window_size), dtype=torch.bool, device=device
+        ),
+        "image_wrist": torch.ones(
+            (batch_size, window_size), dtype=torch.bool, device=device
+        ),
+        "proprio": torch.ones(
+            (batch_size, window_size), dtype=torch.bool, device=device
+        ),
+        "timestep": torch.ones(
+            (batch_size, window_size), dtype=torch.bool, device=device
+        ),
     }
 
     observations = {
-        'image_primary': image_primary,
-        'image_wrist': image_wrist,
-        'proprio': proprio,
-        'timestep': timestep,
-        'timestep_pad_mask': timestep_pad_mask,
-        'task_completed': task_completed,
-        'pad_mask_dict': obs_pad_mask_dict
+        "image_primary": image_primary,
+        "image_wrist": image_wrist,
+        "proprio": proprio,
+        "timestep": timestep,
+        "timestep_pad_mask": timestep_pad_mask,
+        "task_completed": task_completed,
+        "pad_mask_dict": obs_pad_mask_dict,
     }
 
     language_instruction = model.text_processor.encode(raw_tasks)
     language_instruction = {k: v.to(device) for k, v in language_instruction.items()}
 
     task_pad_mask_dict = {
-        'language_instruction': torch.ones(batch_size, dtype=torch.bool, device=device)
+        "language_instruction": torch.ones(batch_size, dtype=torch.bool, device=device)
     }
 
     tasks = {
-        'language_instruction': language_instruction,
-        'pad_mask_dict': task_pad_mask_dict
+        "language_instruction": language_instruction,
+        "pad_mask_dict": task_pad_mask_dict,
     }
 
     x_y_z = raw_actions[:, :3]  # x, y, z
     gripper = raw_actions[:, 3:4]  # gripper
-    rx_ry_rz = torch.zeros((batch_size, 3), dtype=raw_actions.dtype, device=device)  # rx, ry, rz as zeros
-    raw_actions = torch.cat([x_y_z, rx_ry_rz, gripper], dim=1)  # x, y, z, rx, ry, rz, gripper
+    rx_ry_rz = torch.zeros(
+        (batch_size, 3), dtype=raw_actions.dtype, device=device
+    )  # rx, ry, rz as zeros
+    raw_actions = torch.cat(
+        [x_y_z, rx_ry_rz, gripper], dim=1
+    )  # x, y, z, rx, ry, rz, gripper
 
     actions = raw_actions.reshape(batch_size, window_size, 1, action_dim)
     actions = actions.repeat(1, 1, action_horizon, 1)
@@ -104,6 +129,7 @@ def move_to_device(batch, device):
     else:
         return batch
 
+
 def transform_observation_for_eval(obs, model, device):
     """
     Transforms a single observation from the gym-hil environment to the format expected by the OctoModel.
@@ -126,25 +152,37 @@ def transform_observation_for_eval(obs, model, device):
     proprio = proprio.unsqueeze(1)
 
     timestep = torch.zeros((batch_size, window_size), dtype=torch.int32, device=device)
-    timestep_pad_mask = torch.ones((batch_size, window_size), dtype=torch.bool, device=device)
+    timestep_pad_mask = torch.ones(
+        (batch_size, window_size), dtype=torch.bool, device=device
+    )
 
-    task_completed = torch.zeros((batch_size, window_size, action_horizon), dtype=torch.bool, device=device)
+    task_completed = torch.zeros(
+        (batch_size, window_size, action_horizon), dtype=torch.bool, device=device
+    )
 
     obs_pad_mask_dict = {
-        'image_primary': torch.ones((batch_size, window_size), dtype=torch.bool, device=device),
-        'image_wrist': torch.ones((batch_size, window_size), dtype=torch.bool, device=device),
-        'proprio': torch.ones((batch_size, window_size), dtype=torch.bool, device=device),
-        'timestep': torch.ones((batch_size, window_size), dtype=torch.bool, device=device),
+        "image_primary": torch.ones(
+            (batch_size, window_size), dtype=torch.bool, device=device
+        ),
+        "image_wrist": torch.ones(
+            (batch_size, window_size), dtype=torch.bool, device=device
+        ),
+        "proprio": torch.ones(
+            (batch_size, window_size), dtype=torch.bool, device=device
+        ),
+        "timestep": torch.ones(
+            (batch_size, window_size), dtype=torch.bool, device=device
+        ),
     }
 
     observations = {
-        'image_primary': image_primary,
-        'image_wrist': image_wrist,
-        'proprio': proprio,
-        'timestep': timestep,
-        'timestep_pad_mask': timestep_pad_mask,
-        'task_completed': task_completed,
-        'pad_mask_dict': obs_pad_mask_dict
+        "image_primary": image_primary,
+        "image_wrist": image_wrist,
+        "proprio": proprio,
+        "timestep": timestep,
+        "timestep_pad_mask": timestep_pad_mask,
+        "task_completed": task_completed,
+        "pad_mask_dict": obs_pad_mask_dict,
     }
 
     return observations, timestep_pad_mask
@@ -162,19 +200,31 @@ def evaluate_policy(model, env, num_episodes=3, episode_time_limit_s=30):
 
         raw_tasks = ["pick the pink cube"]
         language_instruction = model.text_processor.encode(raw_tasks)
-        language_instruction = {k: v.to(device) for k, v in language_instruction.items()}
+        language_instruction = {
+            k: v.to(device) for k, v in language_instruction.items()
+        }
 
         tasks = {
-            'language_instruction': language_instruction,
-            'pad_mask_dict': {'language_instruction': torch.ones(1, dtype=torch.bool, device=device)}
+            "language_instruction": language_instruction,
+            "pad_mask_dict": {
+                "language_instruction": torch.ones(1, dtype=torch.bool, device=device)
+            },
         }
 
         while time.perf_counter() - start_episode_t < episode_time_limit_s:
             start_time = time.perf_counter()
-            observations, timestep_pad_mask = transform_observation_for_eval(obs, model, device)
+            observations, timestep_pad_mask = transform_observation_for_eval(
+                obs, model, device
+            )
 
             with torch.no_grad():
-                actions = model(observations, tasks, timestep_pad_mask, embodiment_action_dim=7, training=False)
+                actions = model(
+                    observations,
+                    tasks,
+                    timestep_pad_mask,
+                    embodiment_action_dim=7,
+                    training=False,
+                )
 
             action_tensor = actions.squeeze(0)[0]
 
@@ -197,7 +247,7 @@ def evaluate_policy(model, env, num_episodes=3, episode_time_limit_s=30):
 
 
 def main():
-    nb_epochs = 5000 # int(1e5)
+    nb_epochs = 5000  # int(1e5)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     repo_id = "lilkm/panda_pick_octo_resized"
     model_name = "octo-small"
@@ -256,7 +306,7 @@ def main():
         batch_size=batch_size,
         shuffle=False,
         pin_memory=False,
-        drop_last=False
+        drop_last=False,
     )
 
     preprocessed_batches = []
@@ -269,21 +319,23 @@ def main():
     dl_iter = cycle(preprocessed_batches)
 
     optimizer = optim.AdamW(
-        model.parameters(),
-        lr=learning_rate,
-        weight_decay=weight_decay
+        model.parameters(), lr=learning_rate, weight_decay=weight_decay
     )
 
     num_learnable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     num_total_params = sum(p.numel() for p in model.parameters())
 
     print(f"\n{'='*50}")
-    print(f"Training Configuration:")
+    print("Training Configuration:")
     print(f"{'='*50}")
     print(f"Device: {device}")
-    print(f"Dataset frames: {dataset.num_frames} ({format_big_number(dataset.num_frames)})")
+    print(
+        f"Dataset frames: {dataset.num_frames} ({format_big_number(dataset.num_frames)})"
+    )
     print(f"Dataset episodes: {dataset.num_episodes}")
-    print(f"Learnable params: {num_learnable_params} ({format_big_number(num_learnable_params)})")
+    print(
+        f"Learnable params: {num_learnable_params} ({format_big_number(num_learnable_params)})"
+    )
     print(f"Total params: {num_total_params} ({format_big_number(num_total_params)})")
     print(f"Batch size: {batch_size}")
     print(f"Learning rate: {learning_rate}")
@@ -300,19 +352,26 @@ def main():
         cpu_batch = next(dl_iter)
 
         # Move batch to device
-        observations, tasks, actions, action_pad_mask, timestep_pad_mask = move_to_device(cpu_batch, device)
-        transformer_outputs = model(observations, tasks, timestep_pad_mask, training=True)
+        (
+            observations,
+            tasks,
+            actions,
+            action_pad_mask,
+            timestep_pad_mask,
+        ) = move_to_device(cpu_batch, device)
+        transformer_outputs = model(
+            observations, tasks, timestep_pad_mask, training=True
+        )
 
         loss, metrics = model.action_head.loss(
-            transformer_outputs,
-            actions,
-            timestep_pad_mask,
-            action_pad_mask
+            transformer_outputs, actions, timestep_pad_mask, action_pad_mask
         )
 
         optimizer.zero_grad()
         loss.backward()
-        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=clip_gradient)
+        grad_norm = torch.nn.utils.clip_grad_norm_(
+            model.parameters(), max_norm=clip_gradient
+        )
         optimizer.step()
         step_time = time.time() - step_start_time
 
@@ -337,9 +396,11 @@ def main():
                     else:
                         log_dict[key] = value
 
-            print(f"Step {step:06d} | Loss: {loss.item():.4f} | "
-                  f"Grad Norm: {grad_norm.item():.4f} | "
-                  f"Steps/s: {steps_per_second:.2f}")
+            print(
+                f"Step {step:06d} | Loss: {loss.item():.4f} | "
+                f"Grad Norm: {grad_norm.item():.4f} | "
+                f"Steps/s: {steps_per_second:.2f}"
+            )
 
             if use_wandb:
                 wandb.log(log_dict, step=step)
@@ -349,7 +410,6 @@ def main():
     torch.save(model.state_dict(), final_model_path)
     print(f"Final model saved to {final_model_path}")
 
-    import gym_hil
     eval_env = gym.make(
         "gym_hil/PandaPickCubeGamepad-v0",
         image_obs=True,
@@ -369,6 +429,7 @@ def main():
     if use_wandb:
         wandb.log({"final_eval_avg_reward": avg_reward})
         wandb.finish()
+
 
 if __name__ == "__main__":
     main()

@@ -6,19 +6,22 @@ import torch
 import torchvision.transforms.functional as F
 
 # Add the src directory to Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.octo_pytorch.model.octo_model import OctoModel
-from src.octo_pytorch.utils.gym_wrappers import HistoryWrapper, RHCWrapper
 
-import gym_hil
+from octo_pytorch.model.modeling_octo import OctoModel
+
+from src.octo_pytorch.utils.gym_wrappers import RHCWrapper
+
 # Add the lerobot path if needed
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'output/lerobot/src')))
+sys.path.append(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "output/lerobot/src"))
+)
 from lerobot.scripts.rl.gym_manipulator import (
-    GymHilObservationProcessorWrapper,
-    GymHilDeviceWrapper,
     BatchCompatibleWrapper,
-    TorchActionWrapper
+    GymHilDeviceWrapper,
+    GymHilObservationProcessorWrapper,
+    TorchActionWrapper,
 )
 
 
@@ -44,25 +47,37 @@ def transform_observation_for_eval(obs, model, device):
     proprio = proprio.unsqueeze(1)
 
     timestep = torch.zeros((batch_size, window_size), dtype=torch.int32, device=device)
-    timestep_pad_mask = torch.ones((batch_size, window_size), dtype=torch.bool, device=device)
+    timestep_pad_mask = torch.ones(
+        (batch_size, window_size), dtype=torch.bool, device=device
+    )
 
-    task_completed = torch.zeros((batch_size, window_size, action_horizon), dtype=torch.bool, device=device)
+    task_completed = torch.zeros(
+        (batch_size, window_size, action_horizon), dtype=torch.bool, device=device
+    )
 
     obs_pad_mask_dict = {
-        'image_primary': torch.ones((batch_size, window_size), dtype=torch.bool, device=device),
-        'image_wrist': torch.ones((batch_size, window_size), dtype=torch.bool, device=device),
-        'proprio': torch.ones((batch_size, window_size), dtype=torch.bool, device=device),
-        'timestep': torch.ones((batch_size, window_size), dtype=torch.bool, device=device),
+        "image_primary": torch.ones(
+            (batch_size, window_size), dtype=torch.bool, device=device
+        ),
+        "image_wrist": torch.ones(
+            (batch_size, window_size), dtype=torch.bool, device=device
+        ),
+        "proprio": torch.ones(
+            (batch_size, window_size), dtype=torch.bool, device=device
+        ),
+        "timestep": torch.ones(
+            (batch_size, window_size), dtype=torch.bool, device=device
+        ),
     }
 
     observations = {
-        'image_primary': image_primary,
-        'image_wrist': image_wrist,
-        'proprio': proprio,
-        'timestep': timestep,
-        'timestep_pad_mask': timestep_pad_mask,
-        'task_completed': task_completed,
-        'pad_mask_dict': obs_pad_mask_dict
+        "image_primary": image_primary,
+        "image_wrist": image_wrist,
+        "proprio": proprio,
+        "timestep": timestep,
+        "timestep_pad_mask": timestep_pad_mask,
+        "task_completed": task_completed,
+        "pad_mask_dict": obs_pad_mask_dict,
     }
 
     return observations, timestep_pad_mask
@@ -77,29 +92,41 @@ def evaluate_policy(
 ) -> float:
     model.eval()
     device = next(model.parameters()).device
-    
+
     total_rewards = 0
-    
+
     for episode_idx in range(num_episodes):
         print(f"\nStarting evaluation episode {episode_idx + 1}/{num_episodes}")
-        
+
         obs, info = env.reset()
         episode_reward = 0
-        
+
         raw_tasks = ["pick the pink cube"]
         language_instruction = model.text_processor.encode(raw_tasks)
-        language_instruction = {k: v.to(device) for k, v in language_instruction.items()}
+        language_instruction = {
+            k: v.to(device) for k, v in language_instruction.items()
+        }
 
         tasks = {
-            'language_instruction': language_instruction,
-            'pad_mask_dict': {'language_instruction': torch.ones(1, dtype=torch.bool, device=device)}
+            "language_instruction": language_instruction,
+            "pad_mask_dict": {
+                "language_instruction": torch.ones(1, dtype=torch.bool, device=device)
+            },
         }
 
         for _ in range(max_steps_per_episode):
-            observations, timestep_pad_mask = transform_observation_for_eval(obs, model, device)
+            observations, timestep_pad_mask = transform_observation_for_eval(
+                obs, model, device
+            )
 
             with torch.no_grad():
-                actions = model(observations, tasks, timestep_pad_mask, embodiment_action_dim=embodiment_action_dim, training=False)
+                actions = model(
+                    observations,
+                    tasks,
+                    timestep_pad_mask,
+                    embodiment_action_dim=embodiment_action_dim,
+                    training=False,
+                )
 
             action_tensor = actions.squeeze(0)
 
@@ -110,7 +137,7 @@ def evaluate_policy(
 
         print(f"Episode {episode_idx+1} finished with reward: {episode_reward}")
         total_rewards += episode_reward
-        
+
     avg_reward = total_rewards / num_episodes
     model.train()
     return avg_reward
@@ -120,25 +147,24 @@ def main():
     model_name = "octo-small"
     checkpoint_path = "output/models/octo-small_final_gold.pth"
     env_name = "gym_hil/PandaPickCubeGamepad-v0"
-    horizon = 1
     exec_horizon = 2
 
     # Set device
     device = "cuda"
     print(f"Using device: {device}")
-    
+
     # Load model
     print(f"Loading model: {model_name}")
     model = OctoModel(model_name=model_name, repeat_task_tokens=True)
-    
+
     print(f"Loading checkpoint from: {checkpoint_path}")
     model.load_state_dict(torch.load(checkpoint_path, map_location=device))
     model = model.to(device)
     model.eval()
-    
+
     # Create environment
     print(f"Creating environment: {env_name}")
-    
+
     env = gym.make(
         env_name,
         image_obs=True,
@@ -150,10 +176,10 @@ def main():
     env = GymHilDeviceWrapper(env=env, device=device)
     env = BatchCompatibleWrapper(env=env)
     env = TorchActionWrapper(env=env, device=device)
-    
+
     # env = HistoryWrapper(env, horizon=horizon)
     env = RHCWrapper(env, exec_horizon=exec_horizon)
-            
+
     print("\nStarting evaluation...")
     avg_return = evaluate_policy(
         model=model,
@@ -162,7 +188,7 @@ def main():
         max_steps_per_episode=10,
         embodiment_action_dim=7,
     )
-    
+
     print(f"\nFinal average return: {avg_return:.2f}")
 
 

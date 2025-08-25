@@ -1,10 +1,8 @@
 from collections import deque
-from typing import Dict, Optional, Sequence, Tuple
 
 import gym
 import gym.spaces
 import numpy as np
-import torch
 
 
 def stack_and_pad(history: deque, num_obs: int):

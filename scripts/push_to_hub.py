@@ -1,65 +1,64 @@
 import argparse
 import json
 import os
-import sys
-import torch
-from pathlib import Path
+
 import numpy as np
-from huggingface_hub import HfApi, upload_folder
+import torch
+from huggingface_hub import HfApi
+from octo_pytorch.model.modeling_octo import OctoModel
 from safetensors.torch import save_file
-from octo_pytorch.model.octo_model import OctoModel
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Upload Octo models to HuggingFace Hub")
+    parser = argparse.ArgumentParser(
+        description="Upload Octo models to HuggingFace Hub"
+    )
     parser.add_argument(
         "--model-name",
         type=str,
         required=True,
         choices=["octo-small", "octo-base"],
-        help="Model name (octo-small or octo-base)"
+        help="Model name (octo-small or octo-base)",
     )
     parser.add_argument(
         "--checkpoint-path",
         type=str,
         required=True,
-        help="Path to the original checkpoint file"
+        help="Path to the original checkpoint file",
     )
     parser.add_argument(
         "--repo-id",
         type=str,
         required=True,
-        help="HuggingFace Hub repository ID (e.g., lilkm/octo-small)"
+        help="HuggingFace Hub repository ID (e.g., lilkm/octo-small)",
     )
     parser.add_argument(
-        "--private",
-        action="store_true",
-        help="Make the repository private"
+        "--private", action="store_true", help="Make the repository private"
     )
     parser.add_argument(
         "--push-to-hub",
         action="store_true",
         default=True,
-        help="Push to HuggingFace Hub (default: True)"
+        help="Push to HuggingFace Hub (default: True)",
     )
-    
+
     args = parser.parse_args()
-    
+
     # Check if checkpoint exists
     if not os.path.exists(args.checkpoint_path):
         raise FileNotFoundError(f"Checkpoint not found: {args.checkpoint_path}")
 
     print(f"Loading checkpoint from {args.checkpoint_path}...")
     checkpoint = torch.load(args.checkpoint_path, map_location="cpu")
-    
+
     # Initialize the model
     print(f"Initializing {args.model_name} model...")
     model = OctoModel(model_name=args.model_name, repeat_task_tokens=True)
-    
+
     # Load the state dict into the model
     model.load_state_dict(checkpoint, strict=True)
     print("Model weights loaded successfully!")
-    
+
     # Load dataset statistics
     stats_path = f"output/dataset_statistics_{args.model_name}.npy"
     if os.path.exists(stats_path):
@@ -68,39 +67,43 @@ def main():
     else:
         print(f"Warning: Dataset statistics not found at {stats_path}")
         octo_stats = {}
-    
+
     # Save locally first
-    local_save_path = f"outputs/{args.model_name}_hub"
+    local_save_path = f"output/output_hub/{args.model_name}_hub"
     os.makedirs(local_save_path, exist_ok=True)
-    
+
     # Save model weights in safetensors format
     model_path = os.path.join(local_save_path, "model.safetensors")
     print(f"Saving model weights to {model_path}...")
-    
+
     # Get state dict and handle shared tensors
     state_dict = model.state_dict()
-    
+
     # Remove T5 encoder weights since T5-base is already on HuggingFace Hub
     # Users will load T5 separately from the hub
     keys_to_remove = []
     for key in state_dict.keys():
         if "task_tokenizers.language_instruction.t5_encoder" in key:
             keys_to_remove.append(key)
-    
+
     # Create a new state dict without the T5 weights
-    filtered_state_dict = {k: v for k, v in state_dict.items() if k not in keys_to_remove}
-    
+    filtered_state_dict = {
+        k: v for k, v in state_dict.items() if k not in keys_to_remove
+    }
+
     if keys_to_remove:
-        print(f"Excluded T5 encoder weights ({len(keys_to_remove)} tensors) - T5-base will be loaded from HuggingFace Hub")
-    
+        print(
+            f"Excluded T5 encoder weights ({len(keys_to_remove)} tensors) - T5-base will be loaded from HuggingFace Hub"
+        )
+
     save_file(filtered_state_dict, model_path)
-    
+
     # Save dataset statistics
     if octo_stats:
         stats_save_path = os.path.join(local_save_path, "dataset_statistics.npy")
         np.save(stats_save_path, octo_stats)
         print(f"Saved dataset statistics to {stats_save_path}")
-    
+
     # Create config.json for model metadata
     config = {
         "model_type": "octo",
@@ -115,16 +118,16 @@ def main():
         "action_dim": model.action_head.action_dim,
         "diffusion_steps": model.action_head.diffusion_steps,
     }
-    
+
     config_path = os.path.join(local_save_path, "config.json")
     with open(config_path, "w") as f:
         json.dump(config, f, indent=2)
     print(f"Saved model config to {config_path}")
-    
+
     # Push to hub if requested
     if args.push_to_hub:
         print(f"Pushing to HuggingFace Hub: {args.repo_id}...")
-        
+
         # Create model card content
         model_card_content = f"""---
 license: mit
@@ -199,41 +202,41 @@ If you use this model, please cite:
 }}
 ```
 """
-        
+
         # Write model card
         model_card_path = os.path.join(local_save_path, "README.md")
         with open(model_card_path, "w") as f:
             f.write(model_card_content)
-        
+
         # Initialize HuggingFace API
         api = HfApi()
-        
+
         # Create repository if it doesn't exist
         try:
             api.create_repo(
                 repo_id=args.repo_id,
                 private=args.private,
                 exist_ok=True,
-                repo_type="model"
+                repo_type="model",
             )
             print(f"Repository {args.repo_id} created/verified on HuggingFace Hub")
         except Exception as e:
             print(f"Error creating repository: {e}")
             raise
-        
+
         # Upload the entire folder to the hub
         try:
             api.upload_folder(
                 folder_path=local_save_path,
                 repo_id=args.repo_id,
                 repo_type="model",
-                commit_message=f"Upload {args.model_name} pretrained weights"
+                commit_message=f"Upload {args.model_name} pretrained weights",
             )
             print(f"Successfully uploaded to https://huggingface.co/{args.repo_id}")
         except Exception as e:
             print(f"Error uploading to hub: {e}")
             raise
-    
+
     print("Done!")
 
 

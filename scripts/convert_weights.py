@@ -3,8 +3,8 @@ import argparse
 import numpy as np
 import torch
 from flax.traverse_util import flatten_dict
-
-from octo_pytorch.model.octo_model import OctoModel as PyTorchOctoModel
+from octo_pytorch.model.configuration_octo import OctoConfig
+from octo_pytorch.model.modeling_octo import OctoModel as PyTorchOctoModel
 
 
 class OctoWeightConverter:
@@ -58,31 +58,37 @@ class OctoWeightConverter:
         jax_param_name = "octo_transformer/obs_primary_pos_embedding"
         obs_primary_pos = self._get_jax_param(jax_param_name)
         if obs_primary_pos is not None:
-            self.pytorch_model.obs_primary_pos_embedding.data = torch.from_numpy(
-                obs_primary_pos.copy()
-            ).float()
+            self.pytorch_model.octo_transformer.obs_primary_pos_embedding.data = (
+                torch.from_numpy(obs_primary_pos.copy()).float()
+            )
             self._track_converted_params(obs_primary_pos, jax_param_name)
             self.conversion_log.append("Converted obs_primary positional embedding")
         else:
-            print("Warning: Primary observation positional embedding not found in JAX model")
+            print(
+                "Warning: Primary observation positional embedding not found in JAX model"
+            )
 
         # Wrist observation positional embedding
         jax_param_name = "octo_transformer/obs_wrist_pos_embedding"
         obs_wrist_pos = self._get_jax_param(jax_param_name)
         if obs_wrist_pos is not None:
-            self.pytorch_model.obs_wrist_pos_embedding.data = torch.from_numpy(obs_wrist_pos.copy()).float()
+            self.pytorch_model.octo_transformer.obs_wrist_pos_embedding.data = (
+                torch.from_numpy(obs_wrist_pos.copy()).float()
+            )
             self._track_converted_params(obs_wrist_pos, jax_param_name)
             self.conversion_log.append("Converted obs_wrist positional embedding")
         else:
-            print("Warning: Wrist observation positional embedding not found in JAX model")
+            print(
+                "Warning: Wrist observation positional embedding not found in JAX model"
+            )
 
         # Language task positional embedding
         jax_param_name = "octo_transformer/task_language_pos_embedding"
         task_lang_pos = self._get_jax_param(jax_param_name)
         if task_lang_pos is not None:
-            self.pytorch_model.task_language_pos_embedding.data = torch.from_numpy(
-                task_lang_pos.copy()
-            ).float()
+            self.pytorch_model.octo_transformer.task_language_pos_embedding.data = (
+                torch.from_numpy(task_lang_pos.copy()).float()
+            )
             self._track_converted_params(task_lang_pos, jax_param_name)
             self.conversion_log.append("Converted task_language positional embedding")
         else:
@@ -92,7 +98,9 @@ class OctoWeightConverter:
         jax_param_name = "octo_transformer/readout_action_pos_embedding"
         readout_pos = self._get_jax_param(jax_param_name)
         if readout_pos is not None:
-            self.pytorch_model.readout_embedding.data = torch.from_numpy(readout_pos.copy()).float()
+            self.pytorch_model.octo_transformer.readout_embedding.data = (
+                torch.from_numpy(readout_pos.copy()).float()
+            )
             self._track_converted_params(readout_pos, jax_param_name)
             self.conversion_log.append("Converted readout positional embedding")
         else:
@@ -106,13 +114,17 @@ class OctoWeightConverter:
         # Convert primary observation tokenizer
         self._convert_image_tokenizer(
             "octo_transformer/observation_tokenizers_primary/SmallStem16_0",
-            self.pytorch_model.observation_tokenizers["image_primary"].encoder,
+            self.pytorch_model.octo_transformer.observation_tokenizers[
+                "image_primary"
+            ].encoder,
         )
 
         # Convert wrist observation tokenizer
         self._convert_image_tokenizer(
             "octo_transformer/observation_tokenizers_wrist/SmallStem16_0",
-            self.pytorch_model.observation_tokenizers["image_wrist"].encoder,
+            self.pytorch_model.octo_transformer.observation_tokenizers[
+                "image_wrist"
+            ].encoder,
         )
 
     def _convert_image_tokenizer(self, jax_prefix, pytorch_tokenizer):
@@ -127,11 +139,17 @@ class OctoWeightConverter:
             # Convert GroupNorm layers
             for i in range(4):  # SmallStem16 has 4 GroupNorm layers
                 # Each conv_layer is a Sequential with [WeightStandardizedConv2d, GroupNorm, ReLU]
-                groupnorm_layer = pytorch_tokenizer.conv_layers[i][1]  # Get the GroupNorm layer
-                self._convert_groupnorm_layer(f"{jax_prefix}/GroupNorm_{i}", groupnorm_layer)
+                groupnorm_layer = pytorch_tokenizer.conv_layers[i][
+                    1
+                ]  # Get the GroupNorm layer
+                self._convert_groupnorm_layer(
+                    f"{jax_prefix}/GroupNorm_{i}", groupnorm_layer
+                )
 
             # Convert final embedding layer
-            self._convert_embedding_layer(f"{jax_prefix}/embedding", pytorch_tokenizer.embedding)
+            self._convert_embedding_layer(
+                f"{jax_prefix}/embedding", pytorch_tokenizer.embedding
+            )
 
             self.conversion_log.append(f"Converted image tokenizer: {jax_prefix}")
 
@@ -201,20 +219,24 @@ class OctoWeightConverter:
         obs_primary_proj_kernel = self._get_jax_param(kernel_name)
         obs_primary_proj_bias = self._get_jax_param(bias_name)
         if obs_primary_proj_kernel is not None:
-            self.pytorch_model.obs_primary_projection.weight.data = torch.from_numpy(
-                obs_primary_proj_kernel.T.copy()
-            ).float()
+            self.pytorch_model.octo_transformer.obs_primary_projection.weight.data = (
+                torch.from_numpy(obs_primary_proj_kernel.T.copy()).float()
+            )
             self._track_converted_params(obs_primary_proj_kernel, kernel_name)
             if obs_primary_proj_bias is not None:
-                self.pytorch_model.obs_primary_projection.bias.data = torch.from_numpy(
-                    obs_primary_proj_bias.copy()
-                ).float()
+                self.pytorch_model.octo_transformer.obs_primary_projection.bias.data = (
+                    torch.from_numpy(obs_primary_proj_bias.copy()).float()
+                )
                 self._track_converted_params(obs_primary_proj_bias, bias_name)
             else:
-                print("Warning: Primary observation projection bias not found in JAX model")
+                print(
+                    "Warning: Primary observation projection bias not found in JAX model"
+                )
             self.conversion_log.append("Converted obs_primary projection")
         else:
-            print("Warning: Primary observation projection kernel not found in JAX model")
+            print(
+                "Warning: Primary observation projection kernel not found in JAX model"
+            )
 
         # Wrist observation projection
         kernel_name = "octo_transformer/obs_wrist_projection/kernel"
@@ -222,17 +244,19 @@ class OctoWeightConverter:
         obs_wrist_proj_kernel = self._get_jax_param(kernel_name)
         obs_wrist_proj_bias = self._get_jax_param(bias_name)
         if obs_wrist_proj_kernel is not None:
-            self.pytorch_model.obs_wrist_projection.weight.data = torch.from_numpy(
-                obs_wrist_proj_kernel.T.copy()
-            ).float()
+            self.pytorch_model.octo_transformer.obs_wrist_projection.weight.data = (
+                torch.from_numpy(obs_wrist_proj_kernel.T.copy()).float()
+            )
             self._track_converted_params(obs_wrist_proj_kernel, kernel_name)
             if obs_wrist_proj_bias is not None:
-                self.pytorch_model.obs_wrist_projection.bias.data = torch.from_numpy(
-                    obs_wrist_proj_bias.copy()
-                ).float()
+                self.pytorch_model.octo_transformer.obs_wrist_projection.bias.data = (
+                    torch.from_numpy(obs_wrist_proj_bias.copy()).float()
+                )
                 self._track_converted_params(obs_wrist_proj_bias, bias_name)
             else:
-                print("Warning: Wrist observation projection bias not found in JAX model")
+                print(
+                    "Warning: Wrist observation projection bias not found in JAX model"
+                )
             self.conversion_log.append("Converted obs_wrist projection")
         else:
             print("Warning: Wrist observation projection kernel not found in JAX model")
@@ -243,12 +267,12 @@ class OctoWeightConverter:
         task_lang_proj_kernel = self._get_jax_param(kernel_name)
         task_lang_proj_bias = self._get_jax_param(bias_name)
         if task_lang_proj_kernel is not None:
-            self.pytorch_model.task_language_projection.weight.data = torch.from_numpy(
-                task_lang_proj_kernel.T.copy()
-            ).float()
+            self.pytorch_model.octo_transformer.task_language_projection.weight.data = (
+                torch.from_numpy(task_lang_proj_kernel.T.copy()).float()
+            )
             self._track_converted_params(task_lang_proj_kernel, kernel_name)
             if task_lang_proj_bias is not None:
-                self.pytorch_model.task_language_projection.bias.data = torch.from_numpy(
+                self.pytorch_model.octo_transformer.task_language_projection.bias.data = torch.from_numpy(
                     task_lang_proj_bias.copy()
                 ).float()
                 self._track_converted_params(task_lang_proj_bias, bias_name)
@@ -262,15 +286,19 @@ class OctoWeightConverter:
         # Access the encoder blocks through the correct path:
         # OctoTransformer -> BlockTransformer -> Transformer -> encoder_blocks
         try:
-            transformer = self.pytorch_model.transformer.transformer.transformer
+            transformer = self.pytorch_model.octo_transformer.transformer.transformer
             encoder_blocks = transformer.encoder_blocks
         except AttributeError:
             # Try alternative path
             try:
-                encoder_blocks = self.pytorch_model.transformer.transformer.encoder_blocks
-                transformer = self.pytorch_model.transformer.transformer
+                encoder_blocks = (
+                    self.pytorch_model.octo_transformer.transformer.encoder_blocks
+                )
+                transformer = self.pytorch_model.octo_transformer.transformer
             except AttributeError:
-                print("Could not find transformer encoder blocks. Skipping transformer conversion.")
+                print(
+                    "Could not find transformer encoder blocks. Skipping transformer conversion."
+                )
                 return
 
         # Convert individual encoder layers
@@ -281,7 +309,9 @@ class OctoWeightConverter:
         self._convert_encoder_norm(transformer)
 
     def _convert_transformer_layer(self, i, pytorch_layer):
-        jax_prefix = f"octo_transformer/BlockTransformer_0/Transformer_0/encoderblock_{i}"
+        jax_prefix = (
+            f"octo_transformer/BlockTransformer_0/Transformer_0/encoderblock_{i}"
+        )
 
         # Attention
         self._convert_attention(jax_prefix, pytorch_layer)
@@ -314,8 +344,12 @@ class OctoWeightConverter:
 
             # Transpose weights for PyTorch format and concatenate Q, K, V
             # PyTorch expects weights in shape (3*d_model, d_model) where weights are transposed
-            in_proj_weight = np.concatenate([q_weight.T, k_weight.T, v_weight.T], axis=0)
-            pytorch_layer.attention.in_proj_weight.data = torch.from_numpy(in_proj_weight.copy()).float()
+            in_proj_weight = np.concatenate(
+                [q_weight.T, k_weight.T, v_weight.T], axis=0
+            )
+            pytorch_layer.attention.in_proj_weight.data = torch.from_numpy(
+                in_proj_weight.copy()
+            ).float()
 
             # Track converted parameters
             self._track_converted_params(q_kernel, f"{attn_prefix}/query/kernel")
@@ -328,33 +362,49 @@ class OctoWeightConverter:
                 k_bias_flat = k_bias.reshape(-1)
                 v_bias_flat = v_bias.reshape(-1)
                 in_proj_bias = np.concatenate([q_bias_flat, k_bias_flat, v_bias_flat])
-                pytorch_layer.attention.in_proj_bias.data = torch.from_numpy(in_proj_bias.copy()).float()
+                pytorch_layer.attention.in_proj_bias.data = torch.from_numpy(
+                    in_proj_bias.copy()
+                ).float()
 
                 # Track converted bias parameters
                 self._track_converted_params(q_bias, f"{attn_prefix}/query/bias")
                 self._track_converted_params(k_bias, f"{attn_prefix}/key/bias")
                 self._track_converted_params(v_bias, f"{attn_prefix}/value/bias")
             else:
-                print(f"Warning: One or more attention biases not found in JAX model for layer {jax_prefix}")
+                print(
+                    f"Warning: One or more attention biases not found in JAX model for layer {jax_prefix}"
+                )
         else:
-            print(f"Warning: One or more attention kernels not found in JAX model for layer {jax_prefix}")
+            print(
+                f"Warning: One or more attention kernels not found in JAX model for layer {jax_prefix}"
+            )
 
         if out_kernel is not None:
             # JAX: (num_heads, head_dim, d_model) -> PyTorch: (d_model, d_model)
             d_model = 768 if self.model_name == "octo-base" else 384
             out_weight = out_kernel.reshape(d_model, d_model).T
-            pytorch_layer.attention.out_proj.weight.data = torch.from_numpy(out_weight.copy()).float()
+            pytorch_layer.attention.out_proj.weight.data = torch.from_numpy(
+                out_weight.copy()
+            ).float()
             self._track_converted_params(out_kernel, f"{attn_prefix}/out/kernel")
 
             if out_bias is not None:
-                pytorch_layer.attention.out_proj.bias.data = torch.from_numpy(out_bias.copy()).float()
+                pytorch_layer.attention.out_proj.bias.data = torch.from_numpy(
+                    out_bias.copy()
+                ).float()
                 self._track_converted_params(out_bias, f"{attn_prefix}/out/bias")
             else:
-                print(f"Warning: Output attention bias not found in JAX model for layer {jax_prefix}")
+                print(
+                    f"Warning: Output attention bias not found in JAX model for layer {jax_prefix}"
+                )
         else:
-            print(f"Warning: Output attention kernel not found in JAX model for layer {jax_prefix}")
+            print(
+                f"Warning: Output attention kernel not found in JAX model for layer {jax_prefix}"
+            )
 
-        self.conversion_log.append(f"Converted attention layer {jax_prefix.split('/')[-1]}")
+        self.conversion_log.append(
+            f"Converted attention layer {jax_prefix.split('/')[-1]}"
+        )
 
     def _convert_mlp(self, jax_prefix, pytorch_layer):
         mlp_prefix = f"{jax_prefix}/MlpBlock_0"
@@ -365,26 +415,42 @@ class OctoWeightConverter:
         dense1_bias = self._get_jax_param(f"{mlp_prefix}/Dense_1/bias")
 
         if dense0_kernel is not None:
-            pytorch_layer.mlp.dense1.weight.data = torch.from_numpy(dense0_kernel.T.copy()).float()
+            pytorch_layer.mlp.dense1.weight.data = torch.from_numpy(
+                dense0_kernel.T.copy()
+            ).float()
             self._track_converted_params(dense0_kernel, f"{mlp_prefix}/Dense_0/kernel")
             if dense0_bias is not None:
-                pytorch_layer.mlp.dense1.bias.data = torch.from_numpy(dense0_bias.copy()).float()
+                pytorch_layer.mlp.dense1.bias.data = torch.from_numpy(
+                    dense0_bias.copy()
+                ).float()
                 self._track_converted_params(dense0_bias, f"{mlp_prefix}/Dense_0/bias")
             else:
-                print(f"Warning: MLP dense0 bias not found in JAX model for layer {jax_prefix}")
+                print(
+                    f"Warning: MLP dense0 bias not found in JAX model for layer {jax_prefix}"
+                )
         else:
-            print(f"Warning: MLP dense0 kernel not found in JAX model for layer {jax_prefix}")
+            print(
+                f"Warning: MLP dense0 kernel not found in JAX model for layer {jax_prefix}"
+            )
 
         if dense1_kernel is not None:
-            pytorch_layer.mlp.dense2.weight.data = torch.from_numpy(dense1_kernel.T.copy()).float()
+            pytorch_layer.mlp.dense2.weight.data = torch.from_numpy(
+                dense1_kernel.T.copy()
+            ).float()
             self._track_converted_params(dense1_kernel, f"{mlp_prefix}/Dense_1/kernel")
             if dense1_bias is not None:
-                pytorch_layer.mlp.dense2.bias.data = torch.from_numpy(dense1_bias.copy()).float()
+                pytorch_layer.mlp.dense2.bias.data = torch.from_numpy(
+                    dense1_bias.copy()
+                ).float()
                 self._track_converted_params(dense1_bias, f"{mlp_prefix}/Dense_1/bias")
             else:
-                print(f"Warning: MLP dense1 bias not found in JAX model for layer {jax_prefix}")
+                print(
+                    f"Warning: MLP dense1 bias not found in JAX model for layer {jax_prefix}"
+                )
         else:
-            print(f"Warning: MLP dense1 kernel not found in JAX model for layer {jax_prefix}")
+            print(
+                f"Warning: MLP dense1 kernel not found in JAX model for layer {jax_prefix}"
+            )
 
         self.conversion_log.append(f"Converted MLP layer {jax_prefix.split('/')[-1]}")
 
@@ -398,23 +464,35 @@ class OctoWeightConverter:
             pytorch_layer.norm1.weight.data = torch.from_numpy(ln0_scale.copy()).float()
             self._track_converted_params(ln0_scale, f"{jax_prefix}/LayerNorm_0/scale")
             if ln0_bias is not None:
-                pytorch_layer.norm1.bias.data = torch.from_numpy(ln0_bias.copy()).float()
+                pytorch_layer.norm1.bias.data = torch.from_numpy(
+                    ln0_bias.copy()
+                ).float()
                 self._track_converted_params(ln0_bias, f"{jax_prefix}/LayerNorm_0/bias")
             else:
-                print(f"Warning: LayerNorm0 bias not found in JAX model for layer {jax_prefix}")
+                print(
+                    f"Warning: LayerNorm0 bias not found in JAX model for layer {jax_prefix}"
+                )
         else:
-            print(f"Warning: LayerNorm0 scale not found in JAX model for layer {jax_prefix}")
+            print(
+                f"Warning: LayerNorm0 scale not found in JAX model for layer {jax_prefix}"
+            )
 
         if ln1_scale is not None:
             pytorch_layer.norm2.weight.data = torch.from_numpy(ln1_scale.copy()).float()
             self._track_converted_params(ln1_scale, f"{jax_prefix}/LayerNorm_1/scale")
             if ln1_bias is not None:
-                pytorch_layer.norm2.bias.data = torch.from_numpy(ln1_bias.copy()).float()
+                pytorch_layer.norm2.bias.data = torch.from_numpy(
+                    ln1_bias.copy()
+                ).float()
                 self._track_converted_params(ln1_bias, f"{jax_prefix}/LayerNorm_1/bias")
             else:
-                print(f"Warning: LayerNorm1 bias not found in JAX model for layer {jax_prefix}")
+                print(
+                    f"Warning: LayerNorm1 bias not found in JAX model for layer {jax_prefix}"
+                )
         else:
-            print(f"Warning: LayerNorm1 scale not found in JAX model for layer {jax_prefix}")
+            print(
+                f"Warning: LayerNorm1 scale not found in JAX model for layer {jax_prefix}"
+            )
 
         self.conversion_log.append(f"Converted LayerNorm {jax_prefix.split('/')[-1]}")
 
@@ -427,12 +505,18 @@ class OctoWeightConverter:
 
         if encoder_norm_scale is not None:
             try:
-                transformer.encoder_norm.weight.data = torch.from_numpy(encoder_norm_scale.copy()).float()
+                transformer.encoder_norm.weight.data = torch.from_numpy(
+                    encoder_norm_scale.copy()
+                ).float()
                 self._track_converted_params(encoder_norm_scale, f"{jax_prefix}/scale")
 
                 if encoder_norm_bias is not None:
-                    transformer.encoder_norm.bias.data = torch.from_numpy(encoder_norm_bias.copy()).float()
-                    self._track_converted_params(encoder_norm_bias, f"{jax_prefix}/bias")
+                    transformer.encoder_norm.bias.data = torch.from_numpy(
+                        encoder_norm_bias.copy()
+                    ).float()
+                    self._track_converted_params(
+                        encoder_norm_bias, f"{jax_prefix}/bias"
+                    )
                 else:
                     print("Warning: Encoder norm bias not found in JAX model")
 
@@ -455,7 +539,10 @@ class OctoWeightConverter:
         param_info = {}
         for k, v in self.jax_params.items():
             param_name = "/".join(k)
-            param_info[param_name] = {"shape": list(v.shape), "param_count": int(np.prod(v.shape))}
+            param_info[param_name] = {
+                "shape": list(v.shape),
+                "param_count": int(np.prod(v.shape)),
+            }
 
         with open(f"output/jax_params_info_{self.model_name}.json", "w") as f:
             json.dump(param_info, f, indent=4)
@@ -499,7 +586,10 @@ class OctoWeightConverter:
             self.total_pytorch_params += param_count
 
             # Skip T5 parameters as they're frozen
-            if any(skip in name.lower() for skip in ["t5", "language_tokenizer", "text_processor"]):
+            if any(
+                skip in name.lower()
+                for skip in ["t5", "language_tokenizer", "text_processor"]
+            ):
                 pytorch_t5_params += param_count
             else:
                 pytorch_convertible_params += param_count
@@ -538,7 +628,11 @@ class OctoWeightConverter:
             param_count = np.prod(jax_param.shape)
             self.converted_param_count += param_count
             self.converted_params_info.append(
-                {"name": jax_param_name, "shape": list(jax_param.shape), "param_count": int(param_count)}
+                {
+                    "name": jax_param_name,
+                    "shape": list(jax_param.shape),
+                    "param_count": int(param_count),
+                }
             )
 
     def _verify_conversion_completeness(self):
@@ -546,23 +640,33 @@ class OctoWeightConverter:
         print("\nCONVERSION VERIFICATION:")
         print(f"Total JAX parameters: {self.total_jax_params:,}")
         print(f"Total PyTorch parameters: {self.total_pytorch_params:,}")
-        print(f"Convertible JAX parameters (excluding T5): {self.jax_convertible_params:,}")
+        print(
+            f"Convertible JAX parameters (excluding T5): {self.jax_convertible_params:,}"
+        )
         print(f"Converted parameters: {self.converted_param_count:,}")
 
         # Calculate conversion percentage based on convertible parameters
         if self.jax_convertible_params > 0:
-            conversion_percentage = (self.converted_param_count / self.jax_convertible_params) * 100
-            print(f"Conversion coverage (of convertible params): {conversion_percentage:.1f}%")
+            conversion_percentage = (
+                self.converted_param_count / self.jax_convertible_params
+            ) * 100
+            print(
+                f"Conversion coverage (of convertible params): {conversion_percentage:.1f}%"
+            )
 
             if conversion_percentage >= 95:
                 print("✅ Excellent conversion coverage!")
             elif conversion_percentage >= 80:
-                print("⚠️  Good conversion coverage, but some parameters may be missing")
+                print(
+                    "⚠️  Good conversion coverage, but some parameters may be missing"
+                )
             else:
                 print("❌ Low conversion coverage - many parameters not converted")
 
         # Check for unconverted convertible parameters
-        unconverted_convertible = self.jax_convertible_params - self.converted_param_count
+        unconverted_convertible = (
+            self.jax_convertible_params - self.converted_param_count
+        )
         if unconverted_convertible > 0:
             print(f"Unconverted convertible parameters: {unconverted_convertible:,}")
             self._analyze_unconverted_params()
@@ -625,7 +729,9 @@ class OctoWeightConverter:
 
         if unconverted_groups:
             print("Unconverted convertible parameter groups:")
-            for group, count in sorted(unconverted_groups.items(), key=lambda x: x[1], reverse=True):
+            for group, count in sorted(
+                unconverted_groups.items(), key=lambda x: x[1], reverse=True
+            ):
                 print(f"  {group}: {count:,} parameters")
 
             print("\nDetailed unconverted parameters (showing largest first):")
@@ -688,7 +794,12 @@ class OctoWeightConverter:
 
             if should_convert:
                 unconverted_params.append(
-                    {"path": param_name, "shape": param.shape, "param_count": param_count, "data": param}
+                    {
+                        "path": param_name,
+                        "shape": param.shape,
+                        "param_count": param_count,
+                        "data": param,
+                    }
                 )
                 total_unconverted_count += param_count
 
@@ -702,7 +813,9 @@ class OctoWeightConverter:
 
         for i, param_info in enumerate(unconverted_params, 1):
             print(f"{i:3d}. {param_info['path']}")
-            print(f"     Shape: {param_info['shape']}, Count: {param_info['param_count']:,}")
+            print(
+                f"     Shape: {param_info['shape']}, Count: {param_info['param_count']:,}"
+            )
             print(f"     Data type: {type(param_info['data'])}")
             print()
 
@@ -719,7 +832,9 @@ class OctoWeightConverter:
 
         for component, params in sorted(groups.items()):
             total_params = sum(p["param_count"] for p in params)
-            print(f"{component}: {len(params)} parameters, {total_params:,} total count")
+            print(
+                f"{component}: {len(params)} parameters, {total_params:,} total count"
+            )
             for param_info in params:
                 print(f"  - {param_info['path']}: {param_info['shape']}")
 
@@ -777,46 +892,62 @@ class OctoWeightConverter:
         time_kernel = self._get_jax_param(time_kernel_name)
         if time_kernel is not None:
             try:
-                pytorch_head.diffusion_model.time_preprocess.kernel.data = torch.from_numpy(
-                    time_kernel.copy()
-                ).float()
+                pytorch_head.diffusion_model.time_preprocess.kernel.data = (
+                    torch.from_numpy(time_kernel.copy()).float()
+                )
                 self._track_converted_params(time_kernel, time_kernel_name)
                 self.conversion_log.append("Converted time embedding kernel")
             except AttributeError:
                 print("Warning: Could not find time_embedding.kernel in PyTorch model")
 
         # Condition encoder
-        cond_dense0_kernel = self._get_jax_param(f"{jax_prefix}/cond_encoder/Dense_0/kernel")
-        cond_dense0_bias = self._get_jax_param(f"{jax_prefix}/cond_encoder/Dense_0/bias")
-        cond_dense1_kernel = self._get_jax_param(f"{jax_prefix}/cond_encoder/Dense_1/kernel")
-        cond_dense1_bias = self._get_jax_param(f"{jax_prefix}/cond_encoder/Dense_1/bias")
+        cond_dense0_kernel = self._get_jax_param(
+            f"{jax_prefix}/cond_encoder/Dense_0/kernel"
+        )
+        cond_dense0_bias = self._get_jax_param(
+            f"{jax_prefix}/cond_encoder/Dense_0/bias"
+        )
+        cond_dense1_kernel = self._get_jax_param(
+            f"{jax_prefix}/cond_encoder/Dense_1/kernel"
+        )
+        cond_dense1_bias = self._get_jax_param(
+            f"{jax_prefix}/cond_encoder/Dense_1/bias"
+        )
 
         if cond_dense0_kernel is not None:
             try:
-                pytorch_head.diffusion_model.cond_encoder[0].weight.data = torch.from_numpy(
-                    cond_dense0_kernel.T.copy()
-                ).float()
-                self._track_converted_params(cond_dense0_kernel, f"{jax_prefix}/cond_encoder/Dense_0/kernel")
+                pytorch_head.diffusion_model.cond_encoder[
+                    0
+                ].weight.data = torch.from_numpy(cond_dense0_kernel.T.copy()).float()
+                self._track_converted_params(
+                    cond_dense0_kernel, f"{jax_prefix}/cond_encoder/Dense_0/kernel"
+                )
                 if cond_dense0_bias is not None:
-                    pytorch_head.diffusion_model.cond_encoder[0].bias.data = torch.from_numpy(
-                        cond_dense0_bias.copy()
-                    ).float()
-                    self._track_converted_params(cond_dense0_bias, f"{jax_prefix}/cond_encoder/Dense_0/bias")
+                    pytorch_head.diffusion_model.cond_encoder[
+                        0
+                    ].bias.data = torch.from_numpy(cond_dense0_bias.copy()).float()
+                    self._track_converted_params(
+                        cond_dense0_bias, f"{jax_prefix}/cond_encoder/Dense_0/bias"
+                    )
                 self.conversion_log.append("Converted condition encoder layer 0")
             except (AttributeError, IndexError):
                 print("Warning: Could not find cond_encoder[0] in PyTorch model")
 
         if cond_dense1_kernel is not None:
             try:
-                pytorch_head.diffusion_model.cond_encoder[2].weight.data = torch.from_numpy(
-                    cond_dense1_kernel.T.copy()
-                ).float()
-                self._track_converted_params(cond_dense1_kernel, f"{jax_prefix}/cond_encoder/Dense_1/kernel")
+                pytorch_head.diffusion_model.cond_encoder[
+                    2
+                ].weight.data = torch.from_numpy(cond_dense1_kernel.T.copy()).float()
+                self._track_converted_params(
+                    cond_dense1_kernel, f"{jax_prefix}/cond_encoder/Dense_1/kernel"
+                )
                 if cond_dense1_bias is not None:
-                    pytorch_head.diffusion_model.cond_encoder[2].bias.data = torch.from_numpy(
-                        cond_dense1_bias.copy()
-                    ).float()
-                    self._track_converted_params(cond_dense1_bias, f"{jax_prefix}/cond_encoder/Dense_1/bias")
+                    pytorch_head.diffusion_model.cond_encoder[
+                        2
+                    ].bias.data = torch.from_numpy(cond_dense1_bias.copy()).float()
+                    self._track_converted_params(
+                        cond_dense1_bias, f"{jax_prefix}/cond_encoder/Dense_1/bias"
+                    )
                 self.conversion_log.append("Converted condition encoder layer 2")
             except (AttributeError, IndexError):
                 print("Warning: Could not find cond_encoder[2] in PyTorch model")
@@ -824,7 +955,8 @@ class OctoWeightConverter:
         # Diffusion network
         try:
             self._convert_diffusion_network(
-                f"{jax_prefix}/reverse_network", pytorch_head.diffusion_model.reverse_network
+                f"{jax_prefix}/reverse_network",
+                pytorch_head.diffusion_model.reverse_network,
             )
         except AttributeError:
             print("Warning: Could not find diffusion_net in PyTorch model")
@@ -835,11 +967,19 @@ class OctoWeightConverter:
         dense0_bias = self._get_jax_param(f"{jax_prefix}/Dense_0/bias")
         if dense0_kernel is not None:
             try:
-                pytorch_module.input_proj.weight.data = torch.from_numpy(dense0_kernel.T.copy()).float()
-                self._track_converted_params(dense0_kernel, f"{jax_prefix}/Dense_0/kernel")
+                pytorch_module.input_proj.weight.data = torch.from_numpy(
+                    dense0_kernel.T.copy()
+                ).float()
+                self._track_converted_params(
+                    dense0_kernel, f"{jax_prefix}/Dense_0/kernel"
+                )
                 if dense0_bias is not None:
-                    pytorch_module.input_proj.bias.data = torch.from_numpy(dense0_bias.copy()).float()
-                    self._track_converted_params(dense0_bias, f"{jax_prefix}/Dense_0/bias")
+                    pytorch_module.input_proj.bias.data = torch.from_numpy(
+                        dense0_bias.copy()
+                    ).float()
+                    self._track_converted_params(
+                        dense0_bias, f"{jax_prefix}/Dense_0/bias"
+                    )
                 self.conversion_log.append("Converted diffusion network initial layer")
             except AttributeError:
                 print("Warning: Could not find input_proj in PyTorch model")
@@ -847,14 +987,19 @@ class OctoWeightConverter:
         # MLPResNetBlocks - try to find how many blocks exist
         block_count = 0
         for i in range(10):  # Check up to 10 blocks
-            if self._get_jax_param(f"{jax_prefix}/MLPResNetBlock_{i}/Dense_0/kernel") is not None:
+            if (
+                self._get_jax_param(f"{jax_prefix}/MLPResNetBlock_{i}/Dense_0/kernel")
+                is not None
+            ):
                 block_count = i + 1
 
         print(f"Found {block_count} MLP ResNet blocks")
 
         for i in range(block_count):
             try:
-                self._convert_mlp_resnet_block(f"{jax_prefix}/MLPResNetBlock_{i}", pytorch_module.blocks[i])
+                self._convert_mlp_resnet_block(
+                    f"{jax_prefix}/MLPResNetBlock_{i}", pytorch_module.blocks[i]
+                )
             except (AttributeError, IndexError):
                 print(f"Warning: Could not find blocks[{i}] in PyTorch model")
 
@@ -863,11 +1008,19 @@ class OctoWeightConverter:
         dense1_bias = self._get_jax_param(f"{jax_prefix}/Dense_1/bias")
         if dense1_kernel is not None:
             try:
-                pytorch_module.output_proj.weight.data = torch.from_numpy(dense1_kernel.T.copy()).float()
-                self._track_converted_params(dense1_kernel, f"{jax_prefix}/Dense_1/kernel")
+                pytorch_module.output_proj.weight.data = torch.from_numpy(
+                    dense1_kernel.T.copy()
+                ).float()
+                self._track_converted_params(
+                    dense1_kernel, f"{jax_prefix}/Dense_1/kernel"
+                )
                 if dense1_bias is not None:
-                    pytorch_module.output_proj.bias.data = torch.from_numpy(dense1_bias.copy()).float()
-                    self._track_converted_params(dense1_bias, f"{jax_prefix}/Dense_1/bias")
+                    pytorch_module.output_proj.bias.data = torch.from_numpy(
+                        dense1_bias.copy()
+                    ).float()
+                    self._track_converted_params(
+                        dense1_bias, f"{jax_prefix}/Dense_1/bias"
+                    )
                 self.conversion_log.append("Converted diffusion network final layer")
             except AttributeError:
                 print("Warning: Could not find output_proj in PyTorch model")
@@ -884,34 +1037,62 @@ class OctoWeightConverter:
 
         if dense0_kernel is not None:
             try:
-                pytorch_module.dense1.weight.data = torch.from_numpy(dense0_kernel.T.copy()).float()
-                self._track_converted_params(dense0_kernel, f"{jax_prefix}/Dense_0/kernel")
+                pytorch_module.dense1.weight.data = torch.from_numpy(
+                    dense0_kernel.T.copy()
+                ).float()
+                self._track_converted_params(
+                    dense0_kernel, f"{jax_prefix}/Dense_0/kernel"
+                )
                 if dense0_bias is not None:
-                    pytorch_module.dense1.bias.data = torch.from_numpy(dense0_bias.copy()).float()
-                    self._track_converted_params(dense0_bias, f"{jax_prefix}/Dense_0/bias")
-                self.conversion_log.append(f"Converted MLP ResNet block {jax_prefix.split('/')[-1]} layer 0")
+                    pytorch_module.dense1.bias.data = torch.from_numpy(
+                        dense0_bias.copy()
+                    ).float()
+                    self._track_converted_params(
+                        dense0_bias, f"{jax_prefix}/Dense_0/bias"
+                    )
+                self.conversion_log.append(
+                    f"Converted MLP ResNet block {jax_prefix.split('/')[-1]} layer 0"
+                )
             except AttributeError:
                 print(f"Warning: Could not find dense1 in {jax_prefix}")
 
         if dense1_kernel is not None:
             try:
-                pytorch_module.dense2.weight.data = torch.from_numpy(dense1_kernel.T.copy()).float()
-                self._track_converted_params(dense1_kernel, f"{jax_prefix}/Dense_1/kernel")
+                pytorch_module.dense2.weight.data = torch.from_numpy(
+                    dense1_kernel.T.copy()
+                ).float()
+                self._track_converted_params(
+                    dense1_kernel, f"{jax_prefix}/Dense_1/kernel"
+                )
                 if dense1_bias is not None:
-                    pytorch_module.dense2.bias.data = torch.from_numpy(dense1_bias.copy()).float()
-                    self._track_converted_params(dense1_bias, f"{jax_prefix}/Dense_1/bias")
-                self.conversion_log.append(f"Converted MLP ResNet block {jax_prefix.split('/')[-1]} layer 2")
+                    pytorch_module.dense2.bias.data = torch.from_numpy(
+                        dense1_bias.copy()
+                    ).float()
+                    self._track_converted_params(
+                        dense1_bias, f"{jax_prefix}/Dense_1/bias"
+                    )
+                self.conversion_log.append(
+                    f"Converted MLP ResNet block {jax_prefix.split('/')[-1]} layer 2"
+                )
             except AttributeError:
                 print(f"Warning: Could not find dense2 in {jax_prefix}")
 
         # Convert LayerNorm
         if layernorm_scale is not None:
             try:
-                pytorch_module.layer_norm.weight.data = torch.from_numpy(layernorm_scale.copy()).float()
-                self._track_converted_params(layernorm_scale, f"{jax_prefix}/LayerNorm_0/scale")
+                pytorch_module.layer_norm.weight.data = torch.from_numpy(
+                    layernorm_scale.copy()
+                ).float()
+                self._track_converted_params(
+                    layernorm_scale, f"{jax_prefix}/LayerNorm_0/scale"
+                )
                 if layernorm_bias is not None:
-                    pytorch_module.layer_norm.bias.data = torch.from_numpy(layernorm_bias.copy()).float()
-                    self._track_converted_params(layernorm_bias, f"{jax_prefix}/LayerNorm_0/bias")
+                    pytorch_module.layer_norm.bias.data = torch.from_numpy(
+                        layernorm_bias.copy()
+                    ).float()
+                    self._track_converted_params(
+                        layernorm_bias, f"{jax_prefix}/LayerNorm_0/bias"
+                    )
                 self.conversion_log.append(
                     f"Converted MLP ResNet block {jax_prefix.split('/')[-1]} LayerNorm"
                 )
@@ -944,13 +1125,18 @@ def main():
     else:
         raise ValueError(f"Unknown model name: {model_name}")
 
+    # Create a Pytorch configuration
+    cfg = OctoConfig(model_name=model_name)
+
     # Create a PyTorch model
     print("Creating PyTorch model...")
-    pytorch_model = PyTorchOctoModel(model_name=model_name)
+    pytorch_model = PyTorchOctoModel(config=cfg)
 
     # Initialize the weight converter and run the conversion
     print("Starting weight conversion...")
-    converter = OctoWeightConverter(jax_model.params, pytorch_model, model_name=model_name)
+    converter = OctoWeightConverter(
+        jax_model.params, pytorch_model, model_name=model_name
+    )
     pytorch_model = converter.convert()
 
     # Print conversion log

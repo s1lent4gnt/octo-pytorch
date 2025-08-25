@@ -1,43 +1,10 @@
-import logging
-import re
-from typing import Dict, Optional, Sequence, Tuple
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-def regex_match(regex_keys, x):
-    """Match a string against a list of regex patterns."""
-    return any([re.match(r_key, x) for r_key in regex_keys])
-
-
-def regex_filter(regex_keys, xs):
-    """Filter a list of strings using regex patterns."""
-    return list(filter(lambda x: regex_match(regex_keys, x), xs))
-
-
-def generate_proper_pad_mask(
-    tokens: torch.Tensor,
-    pad_mask_dict: Optional[Dict[str, torch.Tensor]],
-    keys: Sequence[str],
-) -> torch.Tensor:
-    """Generate proper padding mask for tokens."""
-    if pad_mask_dict is None:
-        logging.warning("No pad_mask_dict found. Nothing will be masked.")
-        return torch.ones(tokens.shape[:-1], dtype=torch.bool, device=tokens.device)
-
-    if not all([key in pad_mask_dict for key in keys]):
-        logging.warning(
-            f"pad_mask_dict missing keys {set(keys) - set(pad_mask_dict.keys())}. Nothing will be masked."
-        )
-        return torch.ones(tokens.shape[:-1], dtype=torch.bool, device=tokens.device)
-
-    pad_mask = torch.stack([pad_mask_dict[key] for key in keys], dim=-1)
-    pad_mask = torch.any(pad_mask, dim=-1)
-    pad_mask = pad_mask.unsqueeze(-1).expand(tokens.shape[:-1])
-
-    return pad_mask
+from octo_pytorch.model.components.film_conditioning_layer import FilmConditioning
 
 
 @torch.no_grad()
@@ -63,39 +30,6 @@ def normalize_images(img, img_norm_type="default"):
         # tile the mean/std, normalize image, and return
         return (img - mean_tile) / std_tile
     raise ValueError(f"Unknown img_norm_type: {img_norm_type}")
-
-
-class FilmConditioning(nn.Module):
-    """Feature-wise Linear Modulation (FiLM) conditioning layer."""
-
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, conv_filters: torch.Tensor, conditioning: torch.Tensor):
-        """
-        Applies FiLM conditioning to a convolutional feature map.
-
-        Args:
-            conv_filters: A tensor of shape [batch_size, height, width, channels].
-            conditioning: A tensor of shape [batch_size, conditioning_size].
-
-        Returns:
-            A tensor of shape [batch_size, height, width, channels].
-        """
-        channels = conv_filters.shape[-1]
-        cond_size = conditioning.shape[-1]
-
-        self.proj_add = nn.Linear(cond_size, channels)
-        self.proj_mult = nn.Linear(cond_size, channels)
-
-        projected_cond_add = self.proj_add(conditioning)
-        projected_cond_mult = self.proj_mult(conditioning)
-
-        # Reshape for broadcasting
-        projected_cond_add = projected_cond_add.unsqueeze(1).unsqueeze(1)
-        projected_cond_mult = projected_cond_mult.unsqueeze(1).unsqueeze(1)
-
-        return conv_filters * (1 + projected_cond_mult) + projected_cond_add
 
 
 class WeightStandardizedConv2d(nn.Conv2d):
