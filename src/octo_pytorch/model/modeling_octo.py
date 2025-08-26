@@ -143,24 +143,79 @@ class OctoModel(PreTrainedModel):
             stats_save_path = os.path.join(local_save_path, "dataset_statistics.npy")
             np.save(stats_save_path, octo_stats)
 
-        # Create config.json for model metadata
+        # Create config.json for model metadata - ONLY MODEL ARCHITECTURE CONFIG
         config_dict = {
+            # REQUIRED BY LEROBOT
+            "type": "octo",
+            
+            # Model architecture
             "model_type": "octo",
             "model_name": model_name,
             "token_embedding_size": self.config.token_embedding_size,
             "num_layers": self.config.num_layers,
             "num_heads": self.config.num_heads,
             "mlp_dim": self.config.mlp_dim,
-            "max_horizon": self.config.action_max_horizon,
-            "repeat_task_tokens": self.config.repeat_task_tokens,
-            "action_horizon": self.action_head.action_horizon,
+            
+            # Input/output structure
+            "n_obs_steps": 1,
+            "chunk_size": self.config.action_max_horizon,
+            "n_action_steps": self.action_head.action_horizon,
             "action_dim": self.action_head.action_dim,
+            
+            # Model components config
             "diffusion_steps": self.action_head.diffusion_steps,
+            "n_diffusion_samples": 1,
+            "max_action": 5.0,
+            "loss_type": "mse",
+            "time_dim": 32,
+            "num_blocks": 3,
+            "hidden_dim": 256,
+            "use_layer_norm": True,
+            "dropout_rate": 0.0,
+            "attention_dropout_rate": 0.0,
+            "repeat_task_tokens": self.config.repeat_task_tokens,
+            "add_position_embedding": False,
+            
+            # Language model config
+            "language_model_name": "t5-base",
+            "language_max_length": 16,
+            "freeze_language_encoder": True,
+            
+            # Image preprocessing
+            "resize_primary_image": [256, 256],
+            "resize_wrist_image": [128, 128],
+            
+            # Keep backward compatibility fields
+            "max_horizon": self.config.action_max_horizon,
+            "action_horizon": self.action_head.action_horizon,
         }
 
+        # Create separate training_config.json for training hyperparameters
+        training_config_dict = {
+            # Training hyperparameters (NOT needed for model loading)
+            "freeze_transformer": False,
+            "freeze_vision_encoder": True,
+            "train_action_head_only": False,
+            "optimizer_lr": 1e-4,
+            "optimizer_betas": [0.9, 0.999],
+            "optimizer_eps": 1e-8,
+            "optimizer_weight_decay": 1e-4,
+            "optimizer_grad_clip_norm": 10.0,
+            "scheduler_warmup_steps": 1000,
+            "scheduler_decay_steps": 100000,
+            "scheduler_decay_lr": 1e-5,
+            "push_to_hub": False,
+        }
+
+        # Save main config
         config_path = os.path.join(local_save_path, "config.json")
         with open(config_path, "w") as f:
             json.dump(config_dict, f, indent=2)
+
+        # Save training config separately
+        training_config_path = os.path.join(local_save_path, "training_config.json")
+        with open(training_config_path, "w") as f:
+            json.dump(training_config_dict, f, indent=2)
 
         # Create model card
         model_card_content = self._generate_model_card(model_name, repo_id)
