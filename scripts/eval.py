@@ -5,12 +5,8 @@ import gymnasium as gym
 import torch
 import torchvision.transforms.functional as F
 
-# Add the src directory to Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-
-from octo_pytorch.model.modeling_octo import OctoModel
-
+from octo_pytorch.policy.policy import OctoPolicy
+from octo_pytorch.model.configuration_octo import OctoConfig
 from src.octo_pytorch.utils.gym_wrappers import RHCWrapper
 
 # Add the lerobot path if needed
@@ -84,7 +80,7 @@ def transform_observation_for_eval(obs, model, device):
 
 
 def evaluate_policy(
-    model: OctoModel,
+    model: OctoPolicy,
     env: gym.Env,
     num_episodes: int = 3,
     max_steps_per_episode: int = 400,
@@ -150,16 +146,34 @@ def main():
     exec_horizon = 2
 
     # Set device
-    device = "cuda"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    # Load model
-    print(f"Loading model: {model_name}")
-    model = OctoModel(model_name=model_name, repeat_task_tokens=True)
+    if model_name == "octo-base":
+        pytorch_model_name = "lilkm/octo-base-test"
+    elif model_name == "octo-small":
+        pytorch_model_name = "lilkm/octo-small-test"
+    else:
+        raise ValueError(f"Unknown model name: {model_name}")
+    
+    try:
+        # Try loading from HuggingFace Hub first
+        print(f"Attempting to load from HuggingFace Hub: {pytorch_model_name}")
+        policy = OctoPolicy.from_pretrained(pytorch_model_name, device=device)
+        model = policy.model
+        print("Successfully loaded from HuggingFace Hub")
+    except Exception as e:
+        print(f"Failed to load from HuggingFace Hub: {e}")
+        # Fallback to local checkpoint
+        print(f"Loading from local checkpoint: {checkpoint_path}")
+        
+        # Create model with config
+        config = OctoConfig(model_name=model_name)
+        from octo_pytorch.model.modeling_octo import OctoModel
+        model = OctoModel(config)
+        model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
+        model = model.to(device)
 
-    print(f"Loading checkpoint from: {checkpoint_path}")
-    model.load_state_dict(torch.load(checkpoint_path, map_location=device))
-    model = model.to(device)
     model.eval()
 
     # Create environment

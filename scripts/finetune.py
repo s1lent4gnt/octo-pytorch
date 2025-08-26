@@ -10,7 +10,8 @@ import torchvision.transforms.functional as F
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from lerobot.datasets.utils import cycle
 from lerobot.utils.utils import format_big_number
-from octo_pytorch.model.modeling_octo import OctoModel
+from octo_pytorch.policy.policy import OctoPolicy
+from octo_pytorch.model.configuration_octo import OctoConfig
 
 import wandb
 
@@ -283,19 +284,35 @@ def main():
             config=wandb_config,
         )
 
-    # Initialize model
-    print(f"Loading model: {model_name}")
-    model = OctoModel(model_name=model_name, repeat_task_tokens=True)
+    if model_name == "octo-base":
+        pytorch_model_name = "lilkm/octo-base-test"
+    elif model_name == "octo-small":
+        pytorch_model_name = "lilkm/octo-small-test"
+    else:
+        raise ValueError(f"Unknown model name: {model_name}")
 
-    checkpoint_path = f"output/pytorch_{model_name}_model.pth"
-    # checkpoint_path = "output/models/octo-small_final.pth"
-    print(f"Loading checkpoint from: {checkpoint_path}")
-    model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
+    try:
+        # Try loading from HuggingFace Hub first
+        print(f"Attempting to load from HuggingFace Hub: {pytorch_model_name}")
+        policy = OctoPolicy.from_pretrained(pytorch_model_name, device=device)
+        model = policy.model
+        print("Successfully loaded from HuggingFace Hub")
+    except Exception as e:
+        print(f"Failed to load from HuggingFace Hub: {e}")
+        # Fallback to local checkpoint
+        checkpoint_path = f"output/pytorch_{model_name}_model.pth"
+        print(f"Loading from local checkpoint: {checkpoint_path}")
 
-    for param in model.transformer.parameters():
+        # Create model with config
+        config = OctoConfig(model_name=model_name)
+        from octo_pytorch.model.modeling_octo import OctoModel
+        model = OctoModel(config)
+        model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
+        model = model.to(device)
+
+    # Freeze transformer parameters for fine-tuning
+    for param in model.octo_transformer.transformer.parameters():
         param.requires_grad = False
-
-    model = model.to(device)
 
     print(f"Loading dataset: {repo_id}")
     dataset = LeRobotDataset(repo_id)
