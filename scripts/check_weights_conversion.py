@@ -8,8 +8,9 @@ import jax
 import numpy as np
 import torch
 from octo.model.octo_model import OctoModel as JaxOctoModel
-from octo_pytorch.model.configuration_octo import OctoConfig as PytorchOctoConfig
+# from octo_pytorch.model.configuration_octo import OctoConfig as PytorchOctoConfig
 from octo_pytorch.model.modeling_octo import OctoModel as PyTorchOctoModel
+from octo_pytorch.policy.policy import OctoPolicy as PytorchOctoPolicy
 
 
 def main():
@@ -32,11 +33,15 @@ def main():
 
     model_name = args.model_name
     if model_name == "octo-base":
-        jax_model = JaxOctoModel.load_pretrained("hf://rail-berkeley/octo-base-1.5")
+        jax_model_name = "hf://rail-berkeley/octo-base-1.5"
+        pytorch_model_name = "lilkm/octo-base-test"
     elif model_name == "octo-small":
-        jax_model = JaxOctoModel.load_pretrained("hf://rail-berkeley/octo-small-1.5")
+        jax_model_name = "hf://rail-berkeley/octo-small-1.5"
+        pytorch_model_name = "lilkm/octo-small-test"
     else:
         raise ValueError(f"Unknown model name: {model_name}")
+
+    jax_model = JaxOctoModel.load_pretrained(jax_model_name)
 
     # Save dataset statistics for PyTorch comparison
     np.save(f"output/dataset_statistics_{model_name}.npy", jax_model.dataset_statistics)
@@ -106,83 +111,35 @@ def main():
 
     # ##############################################
 
-    cfg = PytorchOctoConfig(model_name=model_name)
-    torch_model = PyTorchOctoModel(cfg)
-    torch_model.load_state_dict(torch.load(f"output/pytorch_{model_name}_model.pth"))
-    torch_model.eval()
-    print("Model loaded successfully.")
-
+    # cfg = PytorchOctoConfig(model_name=model_name)
+    policy = PytorchOctoPolicy.from_pretrained(pytorch_model_name, device="cpu")
+    
     dunmmy_image_primary = np.zeros(shape=(256, 256, 3), dtype=np.float32)
     dunmmy_image_wrist = np.zeros(shape=(128, 128, 3), dtype=np.float32)
     task_text = ["pick up the fork"]
 
-    torch_image_primary = (
-        torch.from_numpy(dunmmy_image_primary)
-        .to(torch.float32)
-        .unsqueeze(0)
-        .unsqueeze(0)
-    )
-    torch_image_wrist = (
-        torch.from_numpy(dunmmy_image_wrist).to(torch.float32).unsqueeze(0).unsqueeze(0)
-    )
-
     torch_observations = {
-        "image_primary": torch_image_primary,
-        "image_wrist": torch_image_wrist,
+        "image_primary": dunmmy_image_primary[np.newaxis, np.newaxis, ...],
+        "image_wrist": dunmmy_image_wrist[np.newaxis, np.newaxis, ...],
+        "task": task_text,
+        "timestep_pad_mask": np.array([[True]]),
     }
 
-    torch_tasks = torch_model.create_tasks(texts=task_text)
-    timestep_pad_mask = torch.ones(1, 1, dtype=torch.bool)
+    # Use PyTorch model's dataset statistics from HuggingFace Hub
+    if policy.dataset_statistics is not None:
+        torch_action = policy.get_action(torch_observations, unnormalization_statistics=policy.dataset_statistics["bridge_dataset"]["action"])["action"]
+        print("Using PyTorch model's dataset statistics from HuggingFace Hub")
+    else:
+        # Fallback to JAX model's statistics
+        torch_action = policy.get_action(torch_observations, unnormalization_statistics=jax_model.dataset_statistics["bridge_dataset"]["action"])["action"]
+        print("Fallback: Using JAX model's dataset statistics")
 
-    # Hooks for debugging
-    # Store outputs here
-    # activations = {}
-
-    # def get_hook(name):
-    #     def hook_fn(module, input, output):
-    #         activations[name] = output.detach()
-    #     return hook_fn
-
-    with torch.no_grad():
-        # Pass embodiment_action_dim=7 for bridge_dataset (7 action dimensions)
-        torch_action = torch_model(
-            torch_observations, torch_tasks, timestep_pad_mask, embodiment_action_dim=7
-        )
-
-    # Register multiple hooks
-    # torch_model.prefix_groups.register_forward_hook(get_hook('prefix_groups'))
-    # torch_model.timestep_groups.register_forward_hook(get_hook('timestep_groups'))
-    # torch_model.transformer_outputs.register_forward_hook(get_hook('transformer_outputs'))
-
-    torch_prefix_groups = torch_model.octo_transformer.prefix_groups[0].tokens.detach()
-    torch_timestep_groups_obs_primary = torch_model.octo_transformer.timestep_groups[
-        0
-    ].tokens.detach()
-    torch_timestep_groups_obs_wrist = torch_model.octo_transformer.timestep_groups[
-        1
-    ].tokens.detach()
-    torch_timestep_groups_obs_task_language = (
-        torch_model.octo_transformer.timestep_groups[2].tokens.detach()
-    )
-    torch_timestep_groups_readout = torch_model.octo_transformer.timestep_groups[
-        3
-    ].tokens.detach()
-    torch_transformer_outputs = torch_model.transformer_outputs[
-        "readout_action"
-    ].tokens.detach()
-
-    stats = np.load(
-        f"output/dataset_statistics_{model_name}.npy", allow_pickle=True
-    ).item()
-    action_stats = stats["bridge_dataset"]["action"]
-    # Ensure stats are float32 to match model's precision
-    mask = action_stats.get("mask", np.ones_like(action_stats["mean"]))
-    mask = torch.from_numpy(mask).to(torch_action.device).bool()
-    torch_action = torch_action[..., : len(mask)]
-    mean = torch.from_numpy(action_stats["mean"]).to(torch_action.device).float()
-    std = torch.from_numpy(action_stats["std"]).to(torch_action.device).float()
-    torch_action = torch.where(mask, torch_action * std + mean, torch_action)
-    # torch_action = torch_action * std + mean
+    torch_prefix_groups = policy.model.octo_transformer.prefix_groups[0].tokens.detach().cpu()
+    torch_timestep_groups_obs_primary = policy.model.octo_transformer.timestep_groups[0].tokens.detach().cpu()
+    torch_timestep_groups_obs_wrist = policy.model.octo_transformer.timestep_groups[1].tokens.detach().cpu()
+    torch_timestep_groups_obs_task_language = policy.model.octo_transformer.timestep_groups[2].tokens.detach().cpu()
+    torch_timestep_groups_readout = policy.model.octo_transformer.timestep_groups[3].tokens.detach().cpu()
+    torch_transformer_outputs = policy.model.transformer_outputs["readout_action"].tokens.detach().cpu()
 
     print("Finished inference.")
 
@@ -236,15 +193,15 @@ def main():
 
     print("Output action")
     print(
-        f"mean diff: {np.mean(np.abs(np.array(jax_action.squeeze()) - torch_action.squeeze().detach().numpy()))}"
+        f"mean diff: {np.mean(np.abs(np.array(jax_action.squeeze()) - torch_action.squeeze().detach().cpu().numpy()))}"
     )
     print(
-        f"max diff: {np.max(np.abs(np.array(jax_action.squeeze()) - torch_action.squeeze().detach().numpy()))}"
+        f"max diff: {np.max(np.abs(np.array(jax_action.squeeze()) - torch_action.squeeze().detach().cpu().numpy()))}"
     )
 
     print("=" * 50)
     print("Jax action:", jax_action)
-    print("PyTorch action:", torch_action.squeeze().detach().numpy())
+    print("PyTorch action:", torch_action.squeeze().detach().cpu().numpy())
     # np.testing.assert_allclose(jax_action.squeeze(), torch_action.squeeze().detach().numpy(), rtol=1e-5, atol=1e-5)
     # print("Outputs are the same!")
 
