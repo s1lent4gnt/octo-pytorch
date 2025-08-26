@@ -128,7 +128,7 @@ class ImageTokenizer(nn.Module):
             task_inputs = extract_inputs(task_stack_keys, tasks, check_spatial=True)
             # Repeat task inputs for each timestep
             task_inputs = task_inputs.unsqueeze(1).repeat(1, enc_inputs.shape[1], 1, 1, 1)
-            enc_inputs = torch.cat([enc_inputs, task_inputs], dim=-1)
+            enc_inputs = torch.cat([enc_inputs, task_inputs.to(enc_inputs.device)], dim=-1)
 
         # Get shape information
         b, t, h, w, c = enc_inputs.shape
@@ -175,7 +175,7 @@ class LanguageTokenizer(nn.Module):
         self.proper_pad_mask = proper_pad_mask
 
         # Load pretrained weights directly
-        self.t5_encoder = T5EncoderModel.from_pretrained("t5-base")
+        self.t5_encoder = T5EncoderModel.from_pretrained("t5-base", torch_dtype=torch.float32)
         self.finetune_encoder = finetune_encoder
 
         if not self.finetune_encoder:
@@ -186,10 +186,13 @@ class LanguageTokenizer(nn.Module):
             print("T5 encoder trainable (finetune_encoder=True)")
 
     def forward(self, language_input: Dict[str, torch.Tensor], tasks=None) -> TokenGroup:
-        outputs = self.t5_encoder(
-            input_ids=language_input["input_ids"], attention_mask=language_input["attention_mask"]
-        )
-        tokens = outputs.last_hidden_state
+        # Ensure T5 encoder is on the same device as inputs
+        device = language_input["input_ids"].device
+        self.t5_encoder = self.t5_encoder.to(device)
+        
+        # Convert inputs to float32 to avoid precision issues
+        outputs = self.t5_encoder(input_ids=language_input["input_ids"].long(), attention_mask=language_input["attention_mask"].long())
+        tokens = outputs.last_hidden_state.float()
 
         # Generate padding mask
         if self.proper_pad_mask:
@@ -208,4 +211,4 @@ class LanguageTokenizer(nn.Module):
         # # TODO (lilkm): this more correct
         # # mask = language_input["attention_mask"].bool()
 
-        return TokenGroup(tokens, pad_mask)
+        return TokenGroup(tokens, pad_mask.to(tokens.device))

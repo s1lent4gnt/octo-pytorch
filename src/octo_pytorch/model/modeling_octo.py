@@ -27,7 +27,7 @@ from octo_pytorch.utils.text_processing import TextProcessor
 class OctoModel(PreTrainedModel):
     """Implementation of the Octo model."""
 
-    config = OctoConfig
+    config_class = OctoConfig
 
     def __init__(self, config: OctoConfig):
         super().__init__(config)
@@ -333,6 +333,8 @@ If you use this model, please cite:
         if texts is not None:
             assert self.text_processor is not None
             tasks["language_instruction"] = self.text_processor.encode(texts)
+            for key, value in tasks["language_instruction"].items():
+                tasks["language_instruction"][key] = value.to(self.device)
             tasks["pad_mask_dict"]["language_instruction"] = torch.ones(len(texts), dtype=torch.bool)
         else:
             batch_size = next(iter(goals.values())).shape[0]
@@ -340,6 +342,8 @@ If you use this model, please cite:
             # The text processor expects a list of strings.
             dummy_texts = [""] * batch_size
             tasks["language_instruction"] = self.text_processor.encode(dummy_texts)
+            for key, value in tasks["language_instruction"].items():
+                tasks["language_instruction"][key] = value.to(self.device)
             tasks["pad_mask_dict"]["language_instruction"] = torch.zeros(batch_size, dtype=torch.bool)
 
         return tasks
