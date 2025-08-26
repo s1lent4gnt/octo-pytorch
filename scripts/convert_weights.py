@@ -1110,6 +1110,22 @@ def main():
         default="octo-base",
         help="Model name to use (e.g., 'octo-base', 'octo-small')",
     )
+    parser.add_argument(
+        "--push_to_hub",
+        action="store_true",
+        help="Push the model to the Hugging Face Hub after conversion.",
+    )
+    parser.add_argument(
+        "--hub_repo_id",
+        type=str,
+        default=None,
+        help="The Hub repository ID to push the model to.",
+    )
+    parser.add_argument(
+        "--private",
+        action="store_true",
+        help="Whether to make the repository private.",
+    )
     args = parser.parse_args()
 
     model_name = args.model_name
@@ -1148,6 +1164,15 @@ def main():
     output_path = f"output/pytorch_{model_name}_model.pth"
     torch.save(pytorch_model.state_dict(), output_path)
     print(f"\nSuccessfully converted and saved the PyTorch model to {output_path}")
+
+    # Push to Hub if requested
+    if args.push_to_hub:
+        if not args.hub_repo_id:
+            raise ValueError("hub_repo_id must be specified when pushing to hub")
+        pytorch_model.push_to_hub(
+            repo_id=args.hub_repo_id,
+            private=args.private,
+        )
 
 
 if __name__ == "__main__":
